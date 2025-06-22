@@ -262,9 +262,9 @@ def main():
         time.sleep(0.1)
         data, _ = ctrl_sock.recvfrom(256)
         print("RX <", ' '.join(f'{b:02x}' for b in data))
-    ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB2 ", (ESP_IP, CTRL_PORT))
+    ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB6 ", (ESP_IP, CTRL_PORT))
     time.sleep(0.1)
-    ctrl_sock.sendto(b"spi S 3 0x41 0x00 0x92 ", (ESP_IP, CTRL_PORT))
+    ctrl_sock.sendto(b"spi S 3 0x41 0x00 0x96 ", (ESP_IP, CTRL_PORT))
     time.sleep(0.1)
     flush_udp_buffer(ctrl_sock)
     CONFIG_2 = 0xD4

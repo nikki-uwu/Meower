@@ -26,10 +26,6 @@ public:
                uint16_t    localPortCtrl,
                uint16_t    remotePortData);
 
-    // Non-blocking receive helper for message_lib.
-    // Returns byte count or 0 if nothing available.
-    int32_t recv(uint8_t* buf, size_t cap);
-
     // Non-blocking send.
     void sendCtrl(const void* data, size_t len);
     void sendData(const void* data, size_t len);

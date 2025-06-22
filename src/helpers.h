@@ -1,8 +1,8 @@
-#pragma once
+#ifndef HELPERS_H
+#define HELPERS_H
+
 #include <Arduino.h>        // millis(), analogRead(), pinMode(), digitalWrite()
 #include "esp_timer.h"      // esp_timer_get_time()
-#include "defines.h"
-#include "esp_cpu.h"
 
 
 
@@ -12,28 +12,10 @@
 // ---------------------------------------------------------------------------------------------------------------------------------
 //  esp_timer_get_time() returns a 64-bit micro-second counter.
 //  We keep the lower 32 bits and right-shift by 3 (= divide by 8)
-//  to obtain 8 µs ticks.  Wraps every 0xFFFF'FFFF * 8 ≈ 572 min.
+//  to obtain 8 µs ticks.  Wraps every (2^32 - 1) * 8us = 9.5 hours.
 static inline uint32_t getTimer8us() noexcept
 {
-    return static_cast<uint32_t>(esp_timer_get_time() >> 3U);
-}
-
-//  getTimer12us – 12.8 µs time-base using RISC-V hardware cycle counter
-// ---------------------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------------------
-//  The ESP32-C3 RISC-V core provides a 64-bit hardware cycle counter ("rdcycle"),
-//  which increments by one each CPU clock cycle. At the default clock (160 MHz),
-//  one cycle = 6.25 ns. We right-shift the 64-bit cycle counter by 10 (= divide by 1024)
-//  to obtain a tick every 1024 cycles, which equals 6.4 µs at 160 MHz, or 12.8 µs at 80 MHz.
-//  This function returns the lower 32 bits of the shifted counter as a uint32_t.
-//  The counter wraps every 0xFFFF'FFFF * 12.8 µs ≈ 15 hours.
-//  - Ultra-fast: suitable for use in ISR or real-time tasks
-//  - No system calls, minimal CPU cost
-static inline uint32_t getTimer12_8us() noexcept
-{
-    // Get hardware cycle counter (increments at CPU clock, 80/160 MHz)
-    uint32_t cycles = esp_cpu_get_ccount();
-    return cycles >> 10U;  // 12.8 us ticks if CPU is 80 MHz
+    return static_cast<uint32_t>(esp_timer_get_time() >> 3U); // shift by 3 to the right gives division by 8 - or 8 us steps
 }
 
 
@@ -65,6 +47,7 @@ class Battery_Sense
             _sample_ms(sample_ms),
             _alpha(constrain(alpha, 0.0f, 1.0f))
         {
+            // MAKE SURE PIN FOR ADC IS ADC1, ADC2 can conflict with Wi-Fi!!!!!!!!!!!!!!!!!!!
             pinMode(_pin, INPUT);
 
             // Guarantee 12-bit reads even if the main sketch forgets to call it.
@@ -85,6 +68,7 @@ class Battery_Sense
             if (now - _last_ms < _sample_ms) return;       // not time yet
 
             _last_ms  = now;
+            // MAKE SURE PIN FOR ADC IS ADC1, ADC2 can conflict with Wi-Fi!!!!!!!!!!!!!!!!!!!
             const uint16_t raw   = analogRead(_pin);       // 0 … 4095 (12-bit ADC1 on C3)
             const value_t volts  = raw * _scale;
             _last_val += _alpha * (volts - _last_val);     // single-pole IIR (cheap!)
@@ -200,3 +184,5 @@ class Blinker
         uint8_t  _flashes  {1};
         uint32_t _flash_ms {60};
 };
+
+#endif // HELPERS_H

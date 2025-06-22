@@ -1,7 +1,6 @@
 #ifndef MATH_LIB_H
 #define MATH_LIB_H
 
-#include <math.h>
 #include <stdint.h>
 #include <string.h>
 #include <defines.h>

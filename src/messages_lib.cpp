@@ -44,11 +44,6 @@ static void send_reply(const void* data, size_t len)
     net.sendCtrl(data, len);
 }
 
-static void send_reply_str(const char* msg)
-{
-    net.sendCtrl(msg, strlen(msg));
-}
-
 static void send_reply_line(const char* msg)
 {
     char buf[256];
