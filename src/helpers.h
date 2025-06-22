@@ -2,7 +2,9 @@
 #define HELPERS_H
 
 #include <Arduino.h>        // millis(), analogRead(), pinMode(), digitalWrite()
-#include "esp_timer.h"      // esp_timer_get_time()
+#include <esp_timer.h>      // esp_timer_get_time()
+#include <Preferences.h>
+#include <defines.h>
 
 
 
@@ -17,6 +19,9 @@ static inline uint32_t getTimer8us() noexcept
 {
     return static_cast<uint32_t>(esp_timer_get_time() >> 3U); // shift by 3 to the right gives division by 8 - or 8 us steps
 }
+
+
+void handleSerialConfig();
 
 
 

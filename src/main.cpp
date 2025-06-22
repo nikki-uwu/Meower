@@ -8,6 +8,8 @@
 #include <messages_lib.h>
 #include <net_manager.h>
 #include <math_lib.h>
+#include <ap_config.h>
+#include <Preferences.h>
 
 
 
@@ -534,6 +536,30 @@ void task_dataTransmission(void*)
 // Setting up pins, wifi connection, reset ADC at the start of the board and initialize ADC and wifi tasks
 void setup()
 {
+    // Run serial so 
+    Serial.begin(115200);
+    while (!Serial); // Wait max 3s for serial to be ready (esp. for USB CDC)
+
+    // If there are no settings at all - ACCESS POINT mode
+    maybeEnterAPMode();
+
+    // If settings are found - pull everything from memory and setup board
+    Preferences prefs;
+    prefs.begin("netconf", true);  // true = read-only
+
+    String   ssid      = prefs.getString("ssid", "");
+    String   pass      = prefs.getString("pass", "");
+    String   ip        = prefs.getString("ip", "");
+    uint16_t port_ctrl = prefs.getUShort("port_ctrl");
+    uint16_t port_data = prefs.getUShort("port_data");
+
+    prefs.end();
+
+    // Configure Wi-Fi using saved credentials and ports
+    net.begin(ssid.c_str(), pass.c_str(), ip.c_str(), port_ctrl, port_data);
+    net.setTargetIP(ip);
+
+
     // CONFIGURE SPI PINS
     pinMode(PIN_SCLK     , OUTPUT);
     pinMode(PIN_MOSI     , OUTPUT);
@@ -580,16 +606,14 @@ void setup()
     esp_wifi_get_config(WIFI_IF_STA, &cfg);
     cfg.sta.listen_interval = 1;
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
- 
-    net.begin(WIFI_SSID, WIFI_PASSWORD, UDP_PORT_CTRL, UDP_PORT_PC_DATA);
 
     esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // deepest power-save level while connected
 
     // hand sockets to the message parser
     msgCtx.udp              = net.udp();   // raw WiFiUDP
     msgCtx.spi              = &spi;
-    msgCtx.udp_ip           = UDP_IP;
-    msgCtx.udp_port_pc_ctrl = UDP_PORT_CTRL;
+    msgCtx.udp_ip           = ip.c_str();
+    msgCtx.udp_port_pc_ctrl = port_ctrl;
     msg_init(&msgCtx);
 
     // Just to be 100 % sure – locks the CPU clock to 160 MHz.
@@ -697,4 +721,7 @@ void loop()
     
     // Always check for inbound control commands
     parse_and_execute_command();
+
+    // Check serial port for any incomming commands 
+    handleSerialConfig();
 }

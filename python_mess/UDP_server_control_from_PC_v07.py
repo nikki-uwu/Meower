@@ -180,7 +180,7 @@ def set_filter_5060(state, ESP_IP, receive_sock):
 def set_filter_100120(state, ESP_IP, receive_sock):
     send_filter_command('filter_100120', state, ESP_IP, receive_sock)
 def check_command_replies(ctrl_sock, print_every=0.5):
-    """Non-blocking read of command port; prints reply, and parses status if present."""
+    """Non-blocking read of command port; prints all available replies."""
     import select
     static = getattr(check_command_replies, "_static", {"last_print": 0})
     now = time.time()
@@ -188,13 +188,16 @@ def check_command_replies(ctrl_sock, print_every=0.5):
         return
     static["last_print"] = now
     check_command_replies._static = static
-    ready, _, _ = select.select([ctrl_sock], [], [], 0)
-    for s in ready:
+
+    # Read ALL pending messages in the queue
+    while True:
+        ready, _, _ = select.select([ctrl_sock], [], [], 0)
+        if not ready:
+            break
         try:
-            data, addr = s.recvfrom(512)
+            data, addr = ctrl_sock.recvfrom(512)
             msg = data.decode("ascii", errors="replace").strip()
             print(f"[CTRL RECV] {msg}")
-            # Optional: parse and print specific status info if your firmware sends it
             if msg.startswith("[FLOOF]"):
                 print(f"[FW STATUS] {msg}")
         except Exception as e:
@@ -242,7 +245,7 @@ def main():
             print("No reply:", e)
     
     
-    
+
     
     
     
@@ -254,7 +257,8 @@ def main():
     ESP_IP = addr[0]
     print("ESP32's IP is", ESP_IP)
     ctrl_sock.sendto(b"sys reset ", (ESP_IP, CTRL_PORT))
-    time.sleep(2)
+
+    ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
     flush_udp_buffer(ctrl_sock)
     for reg in (0x20, 0x23):
         cmd = f"spi M 3 0x{reg:02X} 0x00 0x00 "
@@ -288,7 +292,7 @@ def main():
     data, _ = ctrl_sock.recvfrom(256)
     print("RX <", ' '.join(f'{b:02x}' for b in data))
 
-
+    ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
 
     # Start continuous streaming
     ctrl_sock.sendto(b"sys start_cnt ", (ESP_IP, CTRL_PORT))
@@ -699,10 +703,7 @@ def main():
             if batt_ is not None:
                 v = np.asarray(batt_).ravel()[0] if hasattr(batt_, '__iter__') else batt_
                 batt_label.config(text=f"{v:.2f} V")
-            now = time.time()
-            if (now - prev_time) > 2:
-                ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
-                prev_time = now
+
             offsets = np.array([
                 -4.0459e-04, -5.6858e-04, -4.4878e-04, -4.8903e-04,
                 -4.9321e-04, -5.3085e-04, -5.5320e-04, -6.4267e-04,
@@ -813,7 +814,13 @@ def main():
                 #print(f'FFT plot calc: {t1_fft - t0_fft:.4f} s  [Nch={N_ch}]')
 
             fig_ts.canvas.flush_events()
-            # check_command_replies(ctrl_sock)
+            check_command_replies(ctrl_sock)
+            now = time.time()
+            if (now - prev_time) > 0.5:
+                print(f"[PY] Sending floof at {now:.2f}")
+                ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
+                #ctrl_sock.sendto(b'sys erase_flash', (ESP_IP, CTRL_PORT))
+                prev_time = now
             root.update_idletasks()
             root.update()
             # --- Reduce CPU use by adaptive sleep, but keep UI smooth ---

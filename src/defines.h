@@ -1,9 +1,6 @@
 #pragma once // stop the multiple-definition storm
 
-// --- WIFI CONFIG ---
-#define WIFI_SSID      "xxx"
-#define WIFI_PASSWORD  "xxx"
-#define UDP_IP         "xxx"
+
 #define UDP_PORT_PC_DATA 5001 // EEG/data stream (fast data)
 #define UDP_PORT_CTRL    5000 // Command/control
 

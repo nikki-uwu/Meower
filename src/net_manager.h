@@ -23,6 +23,7 @@ public:
     // Call once from setup().  Blocks until STA is up and has an IP.
     void begin(const char* ssid,
                const char* pass,
+               const char* ip,
                uint16_t    localPortCtrl,
                uint16_t    remotePortData);
 
@@ -35,6 +36,9 @@ public:
 
     // True after at least one valid packet arrived from the PC.
     bool peerFound(void) const { return _peerFound; }
+
+    // Pull IP adress from the memory
+    void setTargetIP(const String& ipStr);
 
     // Give direct socket pointer to code that still needs it (message_lib).
     WiFiUDP* udp() { return &_udp; }
@@ -63,6 +67,10 @@ public:
 
     // Drive a Blinker instance according to the current link state
     void driveLed(Blinker &led) noexcept;
+
+    uint16_t getControlPort() const { return _localPortCtrl; }
+    uint16_t getDataPort()    const { return _remotePortData; }
+
 
 private:
     WiFiUDP   _udp;

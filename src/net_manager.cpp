@@ -25,6 +25,7 @@ extern QueueHandle_t cmdQue;
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::begin(const char* ssid,
                        const char* pass,
+                       const char* ip,
                        uint16_t    localPortCtrl,
                        uint16_t    remotePortData)
 {
@@ -37,7 +38,7 @@ void NetManager::begin(const char* ssid,
     // 2. Remember ports & peer IP so send() can use them later
     _localPortCtrl = localPortCtrl;
     _remotePortData = remotePortData;
-    _remoteIP.fromString(UDP_IP);            // constant from defines.h
+    _remoteIP.fromString(ip);            // constant from defines.h
 
     // 3. Outbound socket
     _udp.begin(0);
@@ -110,7 +111,7 @@ void NetManager::update(void)
     if (!_peerFound && (now - _lastBeaconMs) >= WIFI_BEACON_PERIOD)
     {
         const uint8_t beacon = 0x0A;
-        _udp.beginPacket(_remoteIP, UDP_PORT_CTRL);
+        _udp.beginPacket(_remoteIP, _localPortCtrl);
         _udp.write(&beacon, 1);
         _udp.endPacket();
         _lastBeaconMs = now;
@@ -176,4 +177,9 @@ void NetManager::handleRxPacket(AsyncUDPPacket& packet)
     // 4. Any *valid* packet keeps the watchdog alive.
     _lastRxMs  = millis();
     _peerFound = true;
+}
+
+void NetManager::setTargetIP(const String& ipStr)
+{
+    _remoteIP.fromString(ipStr);
 }

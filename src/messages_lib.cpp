@@ -1,10 +1,11 @@
-#include "messages_lib.h"
+#include <messages_lib.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <spi_lib.h>
 #include <net_manager.h>
 #include <Arduino.h>
+#include <Preferences.h>
 
 
 
@@ -239,7 +240,7 @@ void handle_SPI(char **ctx, const char * /*orig*/)
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // FAMILY: SYS  (prefix "sys") – case-insensitive
-// Commands:   reset   start_cnt   stop_cnt   esp_reboot
+// Commands:   reset   start_cnt   stop_cnt   esp_reboot   erase_flash
 //             FILTER_EQUALIZER_ON   | FILTER_EQUALIZER_OFF
 //             FILTER_DC_ON          | FILTER_DC_OFF
 //             FILTER_5060_ON        | FILTER_5060_OFF
@@ -425,12 +426,28 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         return;
     }
 
+    // --------------------------------------------------------------------
+    // Erase Flash Preferences (sys erase_flash)
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "erase_flash"))
+    {
+        Preferences prefs;
+        prefs.begin("netconf", false); // open writable
+        prefs.clear();                 // delete all keys in this namespace
+        prefs.end();
+
+        send_reply_line("OK: flash config erased – rebooting...");
+        delay(100);
+        ESP.restart();
+        return;
+    }
+
     // Unknown command: error
     // --------------------------------------------------------------------
     // --------------------------------------------------------------------
     char out[256];
     snprintf(out, sizeof(out),
-        "sys - got '%s', expected (reset|start_cnt|stop_cnt|esp_reboot|filter_equalizer_on|filter_equalizer_off|filter_dc_on|filter_dc_off|filter_5060_on|filter_5060_off|filter_100120_on|filter_100120_off|filters_on|filters_off|dccutofffreq|networkfreq|digitalgain)", cmd);
+        "sys - got '%s', expected (reset|start_cnt|stop_cnt|esp_reboot|erase_flash|filter_equalizer_on|filter_equalizer_off|filter_dc_on|filter_dc_off|filter_5060_on|filter_5060_off|filter_100120_on|filter_100120_off|filters_on|filters_off|dccutofffreq|networkfreq|digitalgain)", cmd);
     send_error(out);
 }
 
