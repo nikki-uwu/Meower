@@ -1,0 +1,4 @@
+specmin=-70
+specmax=-60
+wavemin=10
+wavemax=300
