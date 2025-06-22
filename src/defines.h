@@ -29,7 +29,7 @@
 #define FRAMES_PER_PACKET 10
 
 // Buffer size for incoming command UDP packets (adjust based on your max command length)
-#define CMD_BUFFER_SIZE 128 // Bytes
+#define CMD_BUFFER_SIZE 512 // Bytes
 
 // ms between beacons when you are not connected to anyone
 #define WIFI_BEACON_PERIOD 1000
@@ -39,6 +39,7 @@
 
 // PC must send it every < 60 s
 #define WIFI_KEEPALIVE_WORD "floof"
+#define WIFI_KEEPALIVE_WORD_LEN 5
 
 // I dont want main loop to run to often, so i set default period of 50 ms
 #define MAIN_LOOP_PERIOD_MS 50
