@@ -137,19 +137,19 @@ void NetManager::driveLed(Blinker &led) noexcept
 }
 
 // NetManager::handleRxPacket()
-// ---------------------------------------------------------------------------------------------------------------------------------
 // Called by AsyncUDP when a datagram arrives. Runs in the TCP/IP task
 // (lower priority than ADC), so it must finish quickly and never block.
-// ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::handleRxPacket(AsyncUDPPacket& packet)
 {
     // 0. Ignore our own 1-byte discovery beacon (0x0A)
     if (packet.length() == 1 && *((uint8_t*)packet.data()) == 0x0A)
-        return;                         // never queue a beacon
+    {
+        return; // never queue a beacon
+    }
 
-    // 1. 5-byte keep-alive “floof” → refresh watchdog & mark peer present
-    if (packet.length() == 5 &&
-        memcmp(packet.data(), WIFI_KEEPALIVE_WORD, 5) == 0)
+    // 1. 5-byte keep-alive “floof” -> refresh watchdog & mark peer present
+    if (packet.length() == WIFI_KEEPALIVE_WORD_LEN &&
+        memcmp(packet.data(), WIFI_KEEPALIVE_WORD, WIFI_KEEPALIVE_WORD_LEN) == 0)
     {
         _lastRxMs  = millis();
         _peerFound = true;
@@ -160,7 +160,9 @@ void NetManager::handleRxPacket(AsyncUDPPacket& packet)
 
     // 2. Over-sized packet?  Drop immediately (protection against floods).
     if (packet.length() > CMD_BUFFER_SIZE - 1)
+    {
         return;
+    }
 
     // 3. Copy payload into static buffer and queue it for the parser.
     static char rxBuf[CMD_BUFFER_SIZE];

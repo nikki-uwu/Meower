@@ -1,6 +1,3 @@
-// ---------------------------------------------------------------------------------------------------------------------------------
-// Includes
-// ---------------------------------------------------------------------------------------------------------------------------------
 #include "messages_lib.h"
 #include <string.h>
 #include <stdlib.h>
@@ -9,12 +6,27 @@
 #include <net_manager.h>
 #include <Arduino.h>
 
-// ---------------------------------------------------------------------------------------------------------------------------------
+
+
+
 // Static context pointer provided by main program
 // ---------------------------------------------------------------------------------------------------------------------------------
-static const MsgContext *C = nullptr;   // set by msg_init()
+// ---------------------------------------------------------------------------------------------------------------------------------
+static const MsgContext *C = nullptr; // set by msg_init()
+extern NetManager net;
+extern int32_t udp_read(char *buf, size_t cap);
 
-extern NetManager net;                  // from main.cpp
+
+
+
+// External helpers
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+extern void ads1299_full_reset(void);
+extern void continious_mode_start_stop(uint8_t on_off);
+
+
+
 
 // Globals from main.cpp
 extern volatile bool     g_adcEqualizer;       // FIR equalizer (sinc-3)   (true = ON)
@@ -31,8 +43,8 @@ void msg_init(const MsgContext *ctx)
     C = ctx;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------------
 // Small helpers
+// ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 static inline char *next_tok(char **ctx)
 {
@@ -59,14 +71,9 @@ static void send_error(const char *msg)
 
 
 
-// ---------------------------------------------------------------------------------------------------------------------------------
-// External helpers (already implemented elsewhere)
-// ---------------------------------------------------------------------------------------------------------------------------------
-extern void ads1299_full_reset(void);
-extern void continious_mode_start_stop(uint8_t on_off);
 
-// ---------------------------------------------------------------------------------------------------------------------------------
 // Command helpers reused inside the family handlers
+// ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 static void cmd_RESET(char **)
 {
@@ -321,9 +328,10 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         return;
     }
     
-    // --------------------------------------------------------------------
+
     // DC Cutoff Frequency (sys dccutofffreq XX)
-    // Acceptable: 0.5, 1, 2, 4, 8  (maps to 0,1,2,3,4)
+    // Acceptable: 0.5, 1, 2, 4, 8  (maps to 0, 1, 2, 3, 4)
+    // --------------------------------------------------------------------
     // --------------------------------------------------------------------
     if (!strcasecmp(cmd, "dccutofffreq"))
     {
@@ -397,12 +405,12 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         int val = atoi(tok);
         int ival = -1;
         if (val == 1) ival = 0;
-        else if (val == 2) ival = 1;
-        else if (val == 4) ival = 2;
-        else if (val == 8) ival = 3;
-        else if (val == 16) ival = 4;
-        else if (val == 32) ival = 5;
-        else if (val == 64) ival = 6;
+        else if (val ==   2) ival = 1;
+        else if (val ==   4) ival = 2;
+        else if (val ==   8) ival = 3;
+        else if (val ==  16) ival = 4;
+        else if (val ==  32) ival = 5;
+        else if (val ==  64) ival = 6;
         else if (val == 128) ival = 7;
         else if (val == 256) ival = 8;
         if (ival < 0)
@@ -417,8 +425,8 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         return;
     }
 
-    // --------------------------------------------------------------------
     // Unknown command: error
+    // --------------------------------------------------------------------
     // --------------------------------------------------------------------
     char out[256];
     snprintf(out, sizeof(out),
@@ -426,8 +434,12 @@ void handle_SYS(char **ctx, const char * /*orig*/)
     send_error(out);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
 // FAMILY: USR  (prefix "usr")  – placeholder
+// ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 void handle_USR(char **ctx, const char * /*orig*/)
 {
@@ -435,32 +447,49 @@ void handle_USR(char **ctx, const char * /*orig*/)
     // TODO: implement user-level commands
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------------
-// Top-level parser
-// ---------------------------------------------------------------------------------------------------------------------------------
-extern int32_t udp_read(char *buf, size_t cap);   // from main.cpp
 
+
+
+// Parse and process / execute commands
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Reads one message from udp_read(), which pulls from the cmdQue filled by incoming UDP packets via handleRxPacket
+// - If cmdQue is empty, skips immediately (non-blocking).
+// - If msg_init() has not been called, skips.
+// - If incoming data is broken (null or what ever) or empty, skips.
+// 
+// If valid, parses the first token (command family: spi, sys, usr)
+// and dispatches to the appropriate handler function.
+// If command family is unknown, sends an error back over UDP.
+//
+// Handles exactly one command per call.
 void parse_and_execute_command(void)
 {
-    if (!C) return;                               // msg_init() not called
+    if (!C) return;  // msg_init() not called
 
-    static char buf[512];
-    int32_t n = udp_read(buf, sizeof(buf));
+    static char buf[CMD_BUFFER_SIZE];
+    char        original[CMD_BUFFER_SIZE];
+
+    // 1. Read from control port
+    int32_t n = udp_read(buf, CMD_BUFFER_SIZE);
     if (n <= 0) return;
 
-    buf[n] = '\0';                                // NUL-terminate
-    char original[512];
-    strncpy(original, buf, sizeof(original));     // save for error echoes
+    // 2. Ensure null-terminated buffers
+    buf[n] = '\0';
+    strncpy(original, buf, CMD_BUFFER_SIZE - 1);
+    original[CMD_BUFFER_SIZE - 1] = '\0';
 
+    // 3. Tokenize verb
     char *ctx = nullptr;
     char *verb = strtok_r(buf, " \r\n", &ctx);
     if (!verb) return;
 
-    // -------------------- FAMILY dispatch -------------------------------
+    // 4. Dispatch to command handler
     if (!strcasecmp(verb, "spi")) { handle_SPI(&ctx, original); return; }
     if (!strcasecmp(verb, "sys")) { handle_SYS(&ctx, original); return; }
     if (!strcasecmp(verb, "usr")) { handle_USR(&ctx, original); return; }
 
-    // Unknown family → error
+    // 5. Unknown command -> send error
     send_error("got unknown family, expected (spi|sys|usr)");
 }
+
