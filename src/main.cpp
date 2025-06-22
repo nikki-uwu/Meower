@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <SPI.h>
@@ -6,7 +7,6 @@
 #include <spi_lib.h>
 #include <messages_lib.h>
 #include <net_manager.h>
-#include <Arduino.h>
 #include <math_lib.h>
 
 
@@ -32,7 +32,7 @@ static MsgContext    msgCtx;
 static volatile bool continuousReading = false;
 
 // Timmer counter for main loop, so we can control how often it's executed. Default is 1 time per 50 ms
-static volatile uint32_t previousTime = 0; // timer for main loop
+static uint32_t previousTime = 0; // timer for main loop
 
 // Digital gain. If signal you analyze uses maximum +-0.2V or any other value you better to
 // amplify it so it uses the entire dynamic range of 24 bits.
@@ -49,7 +49,7 @@ volatile uint32_t g_selectNetworkFreq = 0;
 // Select for current working sampling frequency. It's needed for filters to set proper coefficients
 // [250 500 1000 2000 4000] Hz
 // [  0   1    2    3    4] select number
-static volatile uint32_t g_selectSamplingFreq = 0; // Number of bits to shift, i.e. s = s << g_digitalGain
+static volatile uint32_t g_selectSamplingFreq = 0; // Sampling rate selector index
 
 // Select cutOff frequency for DC filter.
 // So, just in case, 0.5 Hz second order IIR for DC falls apart even with 32 bit coefficients and 32 bit signal.
@@ -254,7 +254,7 @@ void continious_mode_start_stop(uint8_t on_off)
         spiTransaction_ON(SPI_RESET_CLOCK);
 
         // Before any start of the continious we must check board Sample Rate
-        // Prepare RDATAC message and empty holder for receiving
+        // which is at Config 1 which is to read is 0x21
         uint8_t tx_mex[3] = {0x21, 0x00, 0x00};
         uint8_t rx_mes[3] = {0};
         xfer('M', 3u, tx_mex, rx_mes);
@@ -285,9 +285,6 @@ void continious_mode_start_stop(uint8_t on_off)
     }
     else // Otherwise stop
     {
-        // Turn OFF start signal (pull it DOWN)
-        digitalWrite(PIN_START, on_off);
-
         // Prepare SDATAC message and empty holder for receiving
         uint8_t SDATAC_mes = 0x11;
         uint8_t rx_mes     = 0x00; // just empty message, we do need any response here
@@ -300,6 +297,9 @@ void continious_mode_start_stop(uint8_t on_off)
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
         spiTransaction_OFF();
         spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
+
+        // Turn OFF start signal (pull it DOWN)
+        digitalWrite(PIN_START, on_off);
 
         // Set continuous mode flag to False
         continuousReading = false;
@@ -479,7 +479,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
                 // Battery voltage is merged in the UDP task just before transmission.
                 xQueueSend(adcFrameQue,    // queue handle
                            dataBuffer,     // pointer to packet
-                           portMAX_DELAY); // wait if both slots are full in que. It means if UDP never reads from que DSP will stay here forever. DSP is not allowed to write to que if que is full
+                           0); // wait if both slots are full in que. It means if UDP never reads from que DSP will stay here forever. DSP is not allowed to write to que if que is full
 
                 // Reset cursor – next packet starts at byte 0
                 bytesWritten = 0;
@@ -497,7 +497,15 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
 }
 
 // Data sender task
-void IRAM_ATTR task_dataTransmission(void*)
+// This network task runs over Wi-Fi and doesn’t need to be hard real-time.
+// Putting it in IRAM wastes space needed for critical routines.
+// IRAM code runs without touching flash, but this task will go back to flash anyway.
+// Flash fetches can be blocked during Wi-Fi or SPI1 use, causing unexpected delays.
+// If the task lives in IRAM, those stalls can even crash or hang it.
+// Keeping non-critical tasks in flash makes behavior more predictable.
+// It also leaves IRAM free for ISRs and DSP loops that truly need zero-wait execution.
+// Only put the fastest, most time-sensitive code into IRAM.
+void task_dataTransmission(void*)
 {
     // Pre-allocate buffer for several parsed and processed ADC frames
     // actually holds one full UDP datagram (N frames + battery)
@@ -523,7 +531,6 @@ void IRAM_ATTR task_dataTransmission(void*)
 // Main loop and Setup
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-//
 // Setting up pins, wifi connection, reset ADC at the start of the board and initialize ADC and wifi tasks
 void setup()
 {
@@ -566,8 +573,8 @@ void setup()
     digitalWrite(PIN_LED, LOW);        // start OFF
 
     WiFi.mode(WIFI_MODE_STA);          // station-only; turns off the soft-AP
-    // WiFi.setSleep(true);               // let the modem nap between DTIM beacons
-    // esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // deepest power-save level while connected
+    WiFi.setSleep(true);               // let the modem nap between DTIM beacons
+    
 
     wifi_config_t cfg;
     esp_wifi_get_config(WIFI_IF_STA, &cfg);
@@ -575,6 +582,8 @@ void setup()
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
  
     net.begin(WIFI_SSID, WIFI_PASSWORD, UDP_PORT_CTRL, UDP_PORT_PC_DATA);
+
+    esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // deepest power-save level while connected
 
     // hand sockets to the message parser
     msgCtx.udp              = net.udp();   // raw WiFiUDP
@@ -596,7 +605,7 @@ void setup()
     ads1299_full_reset();
 
     // FreeRTOS resources
-    // 4-slot queue that holds exactly 4 complete UDP datagrams.
+    // 5-slot queue that holds exactly 5 complete UDP datagrams.
     //
     // NOTE – This queue is not a read/write-collision guard.  The kernel
     //        already serialises access. The extra slots simply adds head-
@@ -606,12 +615,12 @@ void setup()
     //
     // Timing math:
     //   • One 28-frame packet @500 SPS = 56 ms.
-    //   • 4 slots -> 224 ms breathing room before the ADC task must wait.
+    //   • 5 slots -> 280 ms breathing room before the ADC task must wait.
     //
     // Typical brief Wi-Fi stall or “floof-storm”:
     //   1) UDP task copies packet from slot 0 (queue locked while copying).
     //   2) Lock releases -> higher-priority ADC pre-empts and refills slot 0.
-    //   3) If the stall persists, ADC writes the next packet into slot 1, 2, 3.
+    //   3) If the stall persists, ADC writes the next packet into slot 1, 2, 3, 4.
     //      Queue now full -> ADC never blocks and continue the processing skipping putting frames inside
     //   4) UDP later drains slot 0, then slot 1 and so on – FIFO order guaranteed by
     //      FreeRTOS, no extra bookkeeping needed.
@@ -621,11 +630,11 @@ void setup()
     // Blocking rules:
     //   - ADC and DSP task never blocks. If sender task is too slow and adc task cant write it will skip writing right away
     //   - Data Transmittion task blocks until at least one item is inside the que and if ADC/DSP task is running
-    adcFrameQue = xQueueCreate(4,                 // 4 items (two full packets)
+    adcFrameQue = xQueueCreate(5,                 // 5 items (two full packets)
                                ADC_PACKET_BYTES); // size of one ADC frames with time stamps – battery not included
 
     // Que for command from PC
-    cmdQue = xQueueCreate(4,               // up to 4 in-flight commands
+    cmdQue = xQueueCreate(8,               // up to 8 in-flight commands
                           CMD_BUFFER_SIZE);   
 
     // High-priority task.
