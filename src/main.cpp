@@ -23,6 +23,7 @@ SPIClass spi(SPI);                 // Use the default SPI instance on the ESP32-
 // Classes
 Battery_Sense BatterySense(PIN_BAT_SENSE, BAT_SCALE, BAT_SAMPLING_MS); // defaults: GPIO-4, scaling 0.00428, 1000 ms (1 s) between battery sampling
 Blinker       LEDheartBeat(PIN_LED      , LED_ON_MS, LED_PERIOD_MS  ); // GPIO-20, 100 ms ON, 5000 ms period
+BootCheck     bootCheck;
 
 // FreeRTOS handles
 static TaskHandle_t  adcTaskHandle = nullptr;
@@ -538,15 +539,41 @@ void setup()
 {
     // Run serial so 
     Serial.begin(115200);
-    while (!Serial); // Wait max 3s for serial to be ready (esp. for USB CDC)
+    delay(10);
 
-    // If there are no settings at all - ACCESS POINT mode
-    maybeEnterAPMode();
+    bootCheck.init();            // shifts history & may set BootMode
+    maybeEnterAPMode();          // starts portal & never returns in AP mode
+
+
 
     // If settings are found - pull everything from memory and setup board
     Preferences prefs;
-    prefs.begin("netconf", true);  // true = read-only
+    bool netconf_ok = prefs.begin("netconf", true);  // try read-only
 
+    if (!netconf_ok)
+    {
+        Serial.println("[BOOT] netconf namespace not found – creating");
+        prefs.end();  // always close before re-opening
+
+        if (prefs.begin("netconf", false))  // open write-mode
+        {
+            prefs.putString("ssid", "");
+            prefs.putString("pass", "");
+            prefs.putString("ip", "");
+            prefs.putUShort("port_ctrl", 0);
+            prefs.putUShort("port_data", 0);
+            prefs.end();  // close after write
+            prefs.begin("netconf", true);  // reopen as read-only for rest of setup
+        }
+        else
+        {
+            Serial.println("[BOOT] Failed to create netconf NVS – staying in AP mode");
+            prefs.end();
+            return;
+        }
+    }
+
+    // NOW: safely read all values
     String   ssid      = prefs.getString("ssid", "");
     String   pass      = prefs.getString("pass", "");
     String   ip        = prefs.getString("ip", "");
@@ -554,6 +581,20 @@ void setup()
     uint16_t port_data = prefs.getUShort("port_data");
 
     prefs.end();
+
+    if (ssid.isEmpty())
+    {
+        Serial.println("[WIFI] No SSID set – entering AP mode");
+        Preferences bm;
+        if (bm.begin("bootlog", false))          // write-mode
+        {
+            bm.putString("BootMode", "AccessPoint");
+            bm.end();
+        }
+
+        ESP.restart();                      // blocks forever
+    }
+
 
     // Configure Wi-Fi using saved credentials and ports
     net.begin(ssid.c_str(), pass.c_str(), ip.c_str(), port_ctrl, port_data);
@@ -704,7 +745,7 @@ void loop()
 
     // If delay more than 0 ms AND less than period we need - wait.
     // Otherwise save current time and proceed
-    if ((timeDifference > 0) && (timeDifference < MAIN_LOOP_PERIOD_MS)) // just 
+    if ((timeDifference > 0) && (timeDifference < MAIN_LOOP_PERIOD_MS))
     {
         delay(timeDifference);
     }
@@ -717,11 +758,11 @@ void loop()
     net.driveLed(LEDheartBeat);  // set pattern if state changed
     LEDheartBeat.update();       // update pin (non-blocking)
     BatterySense.update();       // Check battery voltage
-    net.update();                // Beacon for getting IP address & housekeeping  
-    
+    net.update();                // Beacon & housekeeping  
+
     // Always check for inbound control commands
     parse_and_execute_command();
 
-    // Check serial port for any incomming commands 
+    // Check serial port for any incoming commands
     handleSerialConfig();
 }

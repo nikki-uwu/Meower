@@ -6,6 +6,7 @@
 #include <net_manager.h>
 #include <Arduino.h>
 #include <Preferences.h>
+#include <helpers.h>
 
 
 
@@ -16,7 +17,7 @@
 static const MsgContext *C = nullptr; // set by msg_init()
 extern NetManager net;
 extern int32_t udp_read(char *buf, size_t cap);
-
+extern BootCheck bootCheck;
 
 
 
@@ -156,7 +157,7 @@ static void cmd_ESP_REBOOT(char ** )
 {
     send_reply_line("OK: rebooting…");
     delay(50);                      // give UDP time to flush
-    ESP.restart();                  // soft reset via ROM bootloader
+    bootCheck.ESP_REST("user_esp_reboot");// soft reset via ROM bootloader                
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -438,7 +439,8 @@ void handle_SYS(char **ctx, const char * /*orig*/)
 
         send_reply_line("OK: flash config erased – rebooting...");
         delay(100);
-        ESP.restart();
+
+        bootCheck.ESP_REST("user_erase_flash");
         return;
     }
 

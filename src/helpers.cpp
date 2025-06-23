@@ -1,5 +1,13 @@
 #include <helpers.h>
 
+
+
+
+// Static context pointer provided by main program
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+extern BootCheck bootCheck;
+
 // Reads and handles incoming serial commands to configure network settings.
 // Stores values in RAM until the "apply and reboot" command is received,
 // which writes them to flash (Preferences) and restarts the board.
@@ -55,20 +63,32 @@ void handleSerialConfig()
     }
     else if (line == "apply and reboot")
     {
-        // Save all collected settings to NVS (non-volatile storage)
+        WiFi.mode(WIFI_MODE_NULL);                 // radio off → safe flash
+        delay(100);
+
+        /* ---------- netconf ---------- */
         Preferences prefs;
-        prefs.begin("netconf", false); // write mode
-        prefs.putString("ssid", ssid);
-        prefs.putString("pass", pass);
-        prefs.putString("ip", ip);
-        prefs.putUShort("port_ctrl", port_ctrl);
-        prefs.putUShort("port_data", port_data);
+        prefs.begin("netconf", false);             // WRITE-mode
+        prefs.putString ("ssid", ssid);
+        prefs.putString ("pass", pass);
+        prefs.putString ("ip"  , ip);
+        prefs.putUShort("port_ctrl",  port_ctrl);
+        prefs.putUShort("port_data",  port_data);
         prefs.end();
 
-        Serial.println("OK: config saved, rebooting...");
+        /* ---------- BootMode = NormalMode ---------- */
+        Preferences bm;
+        if (bm.begin("bootlog", false))            // WRITE-mode (creates if missing)
+        {
+            bm.putString("BootMode", "NormalMode");
+            bm.end();
+        }
+        else
+            Serial.println("[SERIAL] WARN: bootlog namespace not available");
 
-        delay(1000); // give time for USB flush
-        ESP.restart(); // perform software reboot
+        Serial.println("OK: config saved – rebooting");
+        delay(100);
+        bootCheck.ESP_REST("serial_cfg_saved");    // soft restart
     }
     else
     {

@@ -3,6 +3,7 @@
 
 static WebServer server(80);
 static Preferences prefs;
+extern BootCheck bootCheck;
 
 static const char* AP_SSID = "EEG-SETUP";
 static const char* AP_PASS = "password";
@@ -97,39 +98,118 @@ void handleRoot()
 
 void handleSave()
 {
+    // Disable Wi-Fi before committing to flash – prevents cache collision
+    WiFi.mode(WIFI_MODE_NULL);
+    delay(100);
+
+    // ---------- store network credentials ----------  (unchanged)
     prefs.begin("netconf", false);
-    prefs.putString("ssid",      server.arg("ssid"));
-    prefs.putString("pass",      server.arg("pass"));
-    prefs.putString("ip",        server.arg("ip"));
-    prefs.putUShort("port_ctrl", server.arg("port_ctrl").toInt());
-    prefs.putUShort("port_data", server.arg("port_data").toInt());
+    prefs.putString ("ssid",      server.arg("ssid"));
+    prefs.putString ("pass",      server.arg("pass"));
+    prefs.putString ("ip",        server.arg("ip"));
+    prefs.putUShort("port_ctrl",  server.arg("port_ctrl").toInt());
+    prefs.putUShort("port_data",  server.arg("port_data").toInt());
     prefs.end();
 
-    server.send(200, "text/plain", "Saved. Rebooting...");
-    delay(1000);
-    ESP.restart();
+    /* ---------- BootMode = NormalMode ---------- */
+    Preferences bm;
+    if (bm.begin("bootlog", false))                // WRITE-mode (creates if missing)
+    {
+        bm.putString("BootMode", "NormalMode");  // ********** NEW LINE **********
+    }
+    else
+        Serial.println("[AP] WARN: bootlog namespace not available");
+
+    server.send(200, "text/plain", "Saved – rebooting…");
+    delay(100);
+    bootCheck.ESP_REST("ap_cfg_saved");
 }
 
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  maybeEnterAPMode()
+//      • Called ONCE, near the top of setup().
+//      • Runs the captive portal unless BootMode == "NormalMode".
+//      • Ignores the presence or absence of an SSID – the flag is the ONLY
+//        authority for the operating mode.
+// ──────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+//  maybeEnterAPMode()   –  DEBUG-INSTRUMENTED VERSION
+//
+//  ─ Flow ─
+//     1.  Reads BootMode from NVS  →  prints the exact value / error
+//     2.  Continues to STA only when BootMode == "NormalMode"
+//     3.  Otherwise launches the captive portal and BLOCKS forever.
+//
+//  Every decisive step emits a Serial message so you can see precisely
+//  where the firmware stalls or reboots.
+// ──────────────────────────────────────────────────────────────────────────────
 void maybeEnterAPMode()
 {
-    prefs.begin("netconf", true);
-    String ssid = prefs.getString("ssid", "");
-    prefs.end();
+    Serial.println("DBG: >>> maybeEnterAPMode()");
 
-    if (ssid.length() > 0) return; // settings already exist
+    /* 1 ──────────────────────────────────────────────────────────────────── */
+    Serial.println("DBG: opening prefs ‘bootlog’ (write-mode, auto-create)");
+    Preferences bm;
+    if (!bm.begin("bootlog", /*readOnly=*/false))
+    {
+        Serial.println("ERR: NVS open failed – forcing AccessPoint");
+    }
+    String mode = bm.getString("BootMode", "<missing>");
+    Serial.print  ("DBG: BootMode read = ‘");
+    Serial.print  (mode);
+    Serial.println("’");
+    bm.end();
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASS);
+    /* 2 ──────────────────────────────────────────────────────────────────── */
+    if (mode == "NormalMode")
+    {
+        Serial.println("DBG: NormalMode – skip portal, continue with STA");
+        return;                                           // ← exit function
+    }
 
-    server.on("/",     handleRoot);
-    server.on("/save", handleSave);
+    /* 3 ──────────────────────────────────────────────────────────────────── */
+    Serial.println("DBG: Launching Access-Point portal");
+
+    WiFi.disconnect(true, true);
+    delay(100);
+
+    Serial.println("DBG: WiFi.mode(AP)");
+    WiFi.mode(WIFI_MODE_AP);
+    delay(100);
+
+    bool ap_ok = WiFi.softAP(AP_SSID, AP_PASS, 1);
+    if (ap_ok)
+        Serial.printf("DBG: softAP OK  – SSID: %s\n", AP_SSID);
+    else
+        Serial.println ("ERR: softAP FAILED");
+
+    IPAddress ip = WiFi.softAPIP();
+    Serial.print("DBG: AP IP address = ");
+    Serial.println(ip);
+
+    Serial.println("DBG: starting WebServer routes");
+    server.on("/",     HTTP_GET , handleRoot);
+    server.on("/save", HTTP_POST, handleSave);
     server.begin();
+    Serial.println("DBG: Captive portal ready at http://192.168.4.1/");
 
+    static Blinker led(PIN_LED, 100, 1000);   // slow heartbeat
+
+    Serial.println("DBG: entering infinite portal loop");
     while (true)
     {
         server.handleClient();
         handleSerialConfig();
-        delay(10);
+        led.update();
+
+        /* extra heartbeat */
+        static uint32_t last = 0;
+        if (millis() - last > 5000)
+        {
+            Serial.printf("DBG: portal alive – free heap %u B\n", esp_get_free_heap_size());
+            last = millis();
+        }
+        delay(2);
     }
 }
-

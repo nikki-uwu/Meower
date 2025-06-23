@@ -115,34 +115,43 @@ def udp_reader_process(shared_dict, shared_bat, shared_tim,
             except BlockingIOError:
                 time.sleep(0.0005)
                 continue
+            except Exception as e:
+                print(f"[UDP ERROR] socket.recvfrom: {e}")
+                time.sleep(0.005)
+                continue
+
             L = len(raw)
             if L < MIN_LEN:
                 continue
             frames = (L - 4) // FR_LEN
             if frames == 0:
                 continue
-            now = time.time()
-            if (now - prev_time) > 1:
-                prev_time = now
-                print('meow')
+
             batt = struct.unpack_from('<f', raw, frames * FR_LEN)[0]
+
             for n in range(frames):
                 base = n * FR_LEN
                 try:
                     frame = parse_frame(raw[base : base + 48])
+                    ts = struct.unpack_from('<I', raw, base + 48)[0]
                 except Exception as e:
-                    continue
-                ts = struct.unpack_from('<I', raw, base + 48)[0]
+                    print(f"[UDP ERROR] frame parse failed: {e}")
+                    continue  # skip this frame
+
                 data_buf[:-1] = data_buf[1:]
                 time_buf[:-1] = time_buf[1:]
                 data_buf[-1]  = frame
                 time_buf[-1]  = ts
+
+            # Update shared memory only once per packet
             with lock:
                 shared_dict['latest'] = (data_buf * scale).copy()
                 shared_bat ['latest'] = batt
                 shared_tim ['latest'] = time_buf.copy()
 
-        except Exception:
+        except Exception as e:
+            print(f"[UDP ERROR] outer loop: {e}")
+            time.sleep(0.01)
             continue
         
 # Pure Python Ricker (Mexican hat) wavelet, always works even if scipy.signal.ricker is missing

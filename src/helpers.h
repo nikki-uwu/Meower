@@ -5,6 +5,9 @@
 #include <esp_timer.h>      // esp_timer_get_time()
 #include <Preferences.h>
 #include <defines.h>
+#include <stdlib.h>
+#include <WiFi.h>           // <-- used by BootCheck::ESP_REST()
+
 
 
 
@@ -189,5 +192,112 @@ class Blinker
         uint8_t  _flashes  {1};
         uint32_t _flash_ms {60};
 };
+
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BootCheck – detects three fast boots (<3 s each).
+//
+//  • On every boot we shift the history (slot2→3,1→2,0→1) and insert a new
+//    placeholder “slow” record in slot 0.  When setup() runs long enough
+//    we overwrite the placeholder with the real uptime.
+//
+//  • If the *last* three boots were “fast” and flagged “a” we only write
+//        BootMode = "AccessPoint"
+//    into the same **bootlog** namespace – ***no more flash-erase***.
+//
+//  • The first lines of setup() (see main.cpp) look at BootMode.  If it is
+//    MISSING **or** equals "AccessPoint" we immediately jump into the AP
+//    portal and stay there until the user saves a config.  handleSave() or
+//    the serial “apply and reboot” command then stores
+//        BootMode = "NormalMode"
+//    just before rebooting.
+//
+//  • Because the fast-reboot storm no longer wipes *netconf* the Wi-Fi driver
+//    never runs concurrently with an NVS erase, eliminating the flash cache
+//    panic that plagued earlier attempts.
+// ──────────────────────────────────────────────────────────────────────────────
+class BootCheck
+{
+public:
+    void init()
+    {
+        /* 1)  OPEN in WRITE-mode  →  auto-creates “bootlog” the first time.
+               If that still fails (flash full / corrupted) we bail out.   */
+        if (!prefs.begin("bootlog", /* readOnly = */ false))
+        {
+            Serial.println("[BOOTCHECK] FATAL: cannot open/create bootlog");
+            return;                                   // skip fast-boot logic
+        }
+
+        /* ---------- history shift (unchanged) ---------- */
+        for (int i = 2; i >= 0; --i)
+        {
+            String   timeKey = "time" + String(i);
+            String   flagKey = "flag" + String(i);
+            uint32_t t       = prefs.getUInt (timeKey.c_str(), 0);
+            String   f       = prefs.getString(flagKey.c_str(), "");
+            prefs.putUInt  (("time" + String(i + 1)).c_str(), t);
+            prefs.putString(("flag" + String(i + 1)).c_str(), f);
+        }
+
+        /* placeholder for this boot (unchanged) */
+        prefs.putUInt  ("time0", FAST_WINDOW_MS + 1);
+        prefs.putString("flag0", "a");
+
+        /* fast-reboot test (unchanged) */
+        uint32_t t1 = prefs.getUInt("time1", FAST_WINDOW_MS + 1);
+        uint32_t t2 = prefs.getUInt("time2", FAST_WINDOW_MS + 1);
+        uint32_t t3 = prefs.getUInt("time3", FAST_WINDOW_MS + 1);
+        String   f1 = prefs.getString("flag1", "");
+        String   f2 = prefs.getString("flag2", "");
+        String   f3 = prefs.getString("flag3", "");
+
+        if ((t1 + t2 + t3 < FAST_WINDOW_MS) && f1 == "a" && f2 == "a" && f3 == "a")
+        {
+            /* ----------------------------------------------------------------
+             *  reset-storm detected
+             *      →  mark “AccessPoint” for the next boot
+             *      →  DO NOT wipe netconf (no flash cache panic)
+             * ---------------------------------------------------------------- */
+            prefs.putString("BootMode", "AccessPoint");
+            prefs.end();                      // close cleanly
+            Serial.println("[BOOTCHECK] reset-storm → BootMode=AccessPoint");
+            delay(100);
+            ESP.restart();                    // warm reboot – never returns
+        }
+
+        prefs.putUInt("time0", millis());   // overwrite placeholder
+        prefs.end();                        // CLOSE
+    }
+
+    // kept for API completeness – main.cpp no longer calls update()
+    inline void update() {}
+
+    void ESP_REST(const char* reason = "user_reboot")
+    {
+        // Tag the boot with a human-readable flag and perform a clean restart.
+        WiFi.mode(WIFI_MODE_NULL);     // stop radio → safe NVS write
+        delay(100);
+
+        Preferences p;
+        if (p.begin("bootlog", false))
+        {
+            p.putString("flag0", reason ? reason : "");
+            p.end();
+        }
+        delay(100);
+        ESP.restart();                // never returns
+    }
+
+private:
+    static constexpr uint32_t FAST_WINDOW_MS = 5000; // 3 s
+    Preferences prefs;
+};
+
+
+
+
+
 
 #endif // HELPERS_H
