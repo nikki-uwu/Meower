@@ -1,6 +1,5 @@
 #pragma once // stop the multiple-definition storm
 
-
 #define UDP_PORT_PC_DATA 5001 // EEG/data stream (fast data)
 #define UDP_PORT_CTRL    5000 // Command/control
 

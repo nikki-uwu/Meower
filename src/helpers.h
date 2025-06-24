@@ -25,9 +25,6 @@ static inline uint32_t getTimer8us() noexcept
 }
 
 
-void handleSerialConfig();
-
-
 
 
 // Battery_Sense  - cached, non-blocking ADC reader
@@ -218,56 +215,8 @@ class Blinker
 class BootCheck
 {
 public:
-    void init()
-    {
-        /* 1)  OPEN in WRITE-mode  →  auto-creates “bootlog” the first time.
-               If that still fails (flash full / corrupted) we bail out.   */
-        if (!prefs.begin("bootlog", /* readOnly = */ false))
-        {
-            DBG("[BOOTCHECK] FATAL: cannot open/create bootlog");
-            return;                                   // skip fast-boot logic
-        }
+    void init();
 
-        /* ---------- history shift (unchanged) ---------- */
-        for (int i = 2; i >= 0; --i)
-        {
-            String   timeKey = "time" + String(i);
-            String   flagKey = "flag" + String(i);
-            uint32_t t       = prefs.getUInt (timeKey.c_str(), 0);
-            String   f       = prefs.getString(flagKey.c_str(), "");
-            prefs.putUInt  (("time" + String(i + 1)).c_str(), t);
-            prefs.putString(("flag" + String(i + 1)).c_str(), f);
-        }
-
-        /* placeholder for this boot (unchanged) */
-        prefs.putUInt  ("time0", FAST_WINDOW_MS + 1);
-        prefs.putString("flag0", "a");
-
-        /* fast-reboot test (unchanged) */
-        uint32_t t1 = prefs.getUInt("time1", FAST_WINDOW_MS + 1);
-        uint32_t t2 = prefs.getUInt("time2", FAST_WINDOW_MS + 1);
-        uint32_t t3 = prefs.getUInt("time3", FAST_WINDOW_MS + 1);
-        String   f1 = prefs.getString("flag1", "");
-        String   f2 = prefs.getString("flag2", "");
-        String   f3 = prefs.getString("flag3", "");
-
-        if ((t1 + t2 + t3 < FAST_WINDOW_MS) && f1 == "a" && f2 == "a" && f3 == "a")
-        {
-            /* ----------------------------------------------------------------
-             *  reset-storm detected
-             *      →  mark “AccessPoint” for the next boot
-             *      →  DO NOT wipe netconf (no flash cache panic)
-             * ---------------------------------------------------------------- */
-            prefs.putString("BootMode", "AccessPoint");
-            prefs.end();                      // close cleanly
-            DBG("[BOOTCHECK] reset-storm → BootMode=AccessPoint");
-            delay(100);
-            ESP.restart();                    // warm reboot - never returns
-        }
-
-        prefs.putUInt("time0", millis());   // overwrite placeholder
-        prefs.end();                        // CLOSE
-    }
 
     // kept for API completeness - main.cpp no longer calls update()
     inline void update() {}
