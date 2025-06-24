@@ -151,17 +151,33 @@ void NetManager::update(void)
     static LinkState prevState = _state;  
 
     // --------------------------------------------------------------------
-    // 1. STREAMING watchdog – drop to IDLE if no packets for 10 s
+    // 1. STREAMING watchdog – drop to IDLE if we have not heard from the PC
+    // for more than _timeoutMs (10 000 ms by default).
+    //
+    // The TCP/IP task updates _lastRxMs when a packet arrives. If that write/interrupt
+    // lands BETWEEN our read of millis() and our later read of _lastRxMs,
+    // the subtraction under-flows and produces 0xFFFFFFFF (-1).  We guard
+    // against that by forcing the delta to 0 whenever the clock went “backward”.
     // --------------------------------------------------------------------
-    if (_state == LinkState::STREAMING && (now - _lastRxMs) > _timeoutMs)
     {
-        DBG("WATCHDOG: no data %lu ms – drop to IDLE", now - _lastRxMs); 
-        _state = LinkState::IDLE;
-        _udp.flush();                   // abort any half-sent datagram
-        xQueueReset(cmdQue);            // wipe pending commands
+        uint32_t now     = millis();
+        uint32_t last    = _lastRxMs;                           // may change under us
+        uint32_t rxDelta = (now >= last) ? (now - last) : 0;    // wrap-safe and race-safe if TCP/IP interupts and updates _lastRxMs before if condition
 
-        _peerFound    = false;          // force beacon cycle
-        _lastBeaconMs = 0;              // send first beacon right away
+        if ((_state == LinkState::STREAMING) && (rxDelta > _timeoutMs))
+        {
+            // send a debug message
+            DBG("WATCHDOG: no data %lu ms - drop to IDLE", rxDelta);
+
+            // Switch state to idle
+            _state = LinkState::IDLE;
+
+            
+            _udp.flush();            // abort any half-sent datagram
+            xQueueReset(cmdQue);     // clear pending commands
+            _peerFound    = false;   // force beacon cycle
+            _lastBeaconMs = 0;
+        }
     }
 
     // --------------------------------------------------------------------
@@ -171,7 +187,7 @@ void NetManager::update(void)
     // --------------------------------------------------------------------
     if (_peerFound && (now - _lastRxMs) > _timeoutMs)
     {
-        DBG("SILENCE: peer lost – restart beacon");
+        DBG("SILENCE: peer lost - restart beacon");
         _peerFound    = false;          // forget the peer
         _lastBeaconMs = 0;              // beacon immediately
         xQueueReset(cmdQue);            // clear stale commands
