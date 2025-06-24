@@ -34,6 +34,9 @@
 // Time out for board to say PC was lost, default was 1 minute
 #define WIFI_SERVER_TIMEOUT 10000 // ms
 
+// Give-up time for Wi-Fi reconnect watchdog (2 minutes)
+#define WIFI_RECONNECT_GIVEUP_MS 60000 // ms
+
 // PC must send it every < 60 s
 #define WIFI_KEEPALIVE_WORD "floof"
 #define WIFI_KEEPALIVE_WORD_LEN 5
@@ -42,7 +45,12 @@
 #define MAIN_LOOP_PERIOD_MS 50
 
 // Do you need debug stuff?
-// #define DEBUG true
+#define SERIAL_DEBUG 1
+#if SERIAL_DEBUG
+  #define DBG(fmt, ...)  do{ Serial.printf("[DBG] " fmt "\n", ##__VA_ARGS__); }while(0)
+#else
+  #define DBG(fmt, ...)  ((void)0)
+#endif
 
 
 
