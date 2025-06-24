@@ -564,7 +564,7 @@ void setup()
 
     if (!netconf_ok)
     {
-        Serial.println("[BOOT] netconf namespace not found - creating");
+        DBG("[BOOT] netconf namespace not found - creating");
         prefs.end();  // always close before re-opening
 
         if (prefs.begin("netconf", false))  // open write-mode
@@ -579,7 +579,7 @@ void setup()
         }
         else
         {
-            Serial.println("[BOOT] Failed to create netconf NVS - staying in AP mode");
+            DBG("[BOOT] Failed to create netconf NVS - staying in AP mode");
             prefs.end();
             return;
         }
@@ -596,7 +596,7 @@ void setup()
 
     if (ssid.isEmpty())
     {
-        Serial.println("[WIFI] No SSID set - entering AP mode");
+        DBG("[WIFI] No SSID set - entering AP mode");
         Preferences bm;
         if (bm.begin("bootlog", false))          // write-mode
         {
@@ -691,8 +691,8 @@ void setup()
     //        catch up.
     //
     // Timing math:
-    //   • One 28-frame packet @500 SPS = 56 ms.
-    //   • 5 slots -> 280 ms breathing room before the ADC task must wait.
+    // - One 28-frame packet @500 SPS = 56 ms.
+    // - 5 slots -> 280 ms breathing room before the ADC task must wait.
     //
     // Typical brief Wi-Fi stall or “floof-storm”:
     //   1) UDP task copies packet from slot 0 (queue locked while copying).
@@ -776,5 +776,5 @@ void loop()
     parse_and_execute_command();
 
     // Check serial port for any incoming commands
-    handleSerialConfig();
+    CLI.update();
 }

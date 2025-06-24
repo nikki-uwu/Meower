@@ -1,9 +1,10 @@
 #include "ap_config.h"
 
 
-static WebServer server(80);
+static WebServer   server(80);
 static Preferences prefs;
-extern BootCheck bootCheck;
+extern BootCheck   bootCheck;
+extern SerialCli   CLI;
 
 static const char* AP_SSID = "EEG-SETUP";
 static const char* AP_PASS = "password";
@@ -118,7 +119,7 @@ void handleSave()
         bm.putString("BootMode", "NormalMode");  // ********** NEW LINE **********
     }
     else
-        Serial.println("[AP] WARN: bootlog namespace not available");
+        DBG("[AP] WARN: bootlog namespace not available");
 
     server.send(200, "text/plain", "Saved - rebooting…");
     delay(100);
@@ -146,68 +147,68 @@ void handleSave()
 // ──────────────────────────────────────────────────────────────────────────────
 void maybeEnterAPMode()
 {
-    Serial.println("DBG: >>> maybeEnterAPMode()");
+    DBG("DBG: >>> maybeEnterAPMode()");
 
     /* 1 ──────────────────────────────────────────────────────────────────── */
-    Serial.println("DBG: opening prefs ‘bootlog’ (write-mode, auto-create)");
+    DBG("DBG: opening prefs ‘bootlog’ (write-mode, auto-create)");
     Preferences bm;
     if (!bm.begin("bootlog", /*readOnly=*/false))
     {
-        Serial.println("ERR: NVS open failed - forcing AccessPoint");
+        DBG("ERR: NVS open failed - forcing AccessPoint");
     }
     String mode = bm.getString("BootMode", "<missing>");
-    Serial.print  ("DBG: BootMode read = ‘");
-    Serial.print  (mode);
-    Serial.println("’");
+    DBG("DBG: BootMode read = ‘");
+    DBG("%s", mode.c_str());
+    DBG("’");
     bm.end();
 
     /* 2 ──────────────────────────────────────────────────────────────────── */
     if (mode == "NormalMode")
     {
-        Serial.println("DBG: NormalMode - skip portal, continue with STA");
+        DBG("DBG: NormalMode - skip portal, continue with STA");
         return;                                           // ← exit function
     }
 
     /* 3 ──────────────────────────────────────────────────────────────────── */
-    Serial.println("DBG: Launching Access-Point portal");
+    DBG("DBG: Launching Access-Point portal");
 
     WiFi.disconnect(true, true);
     delay(100);
 
-    Serial.println("DBG: WiFi.mode(AP)");
+    DBG("DBG: WiFi.mode(AP)");
     WiFi.mode(WIFI_MODE_AP);
     delay(100);
 
     bool ap_ok = WiFi.softAP(AP_SSID, AP_PASS, 1);
     if (ap_ok)
-        Serial.printf("DBG: softAP OK  - SSID: %s\n", AP_SSID);
+        DBG("DBG: softAP OK  - SSID: %s\n", AP_SSID);
     else
-        Serial.println ("ERR: softAP FAILED");
+        DBG("ERR: softAP FAILED");
 
     IPAddress ip = WiFi.softAPIP();
-    Serial.print("DBG: AP IP address = ");
-    Serial.println(ip);
+    DBG("DBG: AP IP address = ");
+    DBG("s", ip.toString().c_str());
 
-    Serial.println("DBG: starting WebServer routes");
+    DBG("DBG: starting WebServer routes");
     server.on("/",     HTTP_GET , handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.begin();
-    Serial.println("DBG: Captive portal ready at http://192.168.4.1/");
+    DBG("DBG: Captive portal ready at http://192.168.4.1/");
 
     static Blinker led(PIN_LED, 100, 1000);   // slow heartbeat
 
-    Serial.println("DBG: entering infinite portal loop");
+    DBG("DBG: entering infinite portal loop");
     while (true)
     {
         server.handleClient();
-        handleSerialConfig();
+        CLI.update();
         led.update();
 
         /* extra heartbeat */
         static uint32_t last = 0;
         if (millis() - last > 5000)
         {
-            Serial.printf("DBG: portal alive - free heap %u B\n", esp_get_free_heap_size());
+            DBG("DBG: portal alive - free heap %u B\n", esp_get_free_heap_size());
             last = millis();
         }
         delay(2);

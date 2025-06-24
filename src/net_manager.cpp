@@ -327,33 +327,18 @@ void NetManager::debugPrint(void)
 #if SERIAL_DEBUG
     static uint32_t seq = 0;
 
-    Serial.print(F("=== NetManager === "));
-    Serial.print(seq++);
-    Serial.print(F("\n state        : "));
-    Serial.println(static_cast<uint8_t>(_state));
+    DBG("=== NetManager === %lu", seq++);
 
-    Serial.print(F(" peerFound    : "));
-    Serial.println(_peerFound);
+    DBG(" state        : %u", static_cast<uint8_t>(_state));
+    DBG(" peerFound    : %d", _peerFound);
+    DBG(" reconnPend   : %d", _reconnPend);
+    DBG(" giveUp       : %d", _giveUp);
+    DBG(" lastFailMs   : %lu", _lastFailMs);
+    DBG(" lastRxMs     : %lu", _lastRxMs);
+    DBG(" lastBeaconMs : %lu", _lastBeaconMs);
+    DBG(" rxΔ          : %lu", millis() - _lastRxMs);
 
-    Serial.print(F(" reconnPend   : "));
-    Serial.println(_reconnPend);
-
-    Serial.print(F(" giveUp       : "));
-    Serial.println(_giveUp);
-
-    Serial.print(F(" lastFailMs   : "));
-    Serial.println(_lastFailMs);
-
-    Serial.print(F(" lastRxMs     : "));
-    Serial.println(_lastRxMs);
-
-    Serial.print(F(" lastBeaconMs : "));
-    Serial.println(_lastBeaconMs);
-
-    Serial.print(" rxΔ=");
-    Serial.println(millis() - _lastRxMs);
-
-    Serial.print(F(" ===\n"));
+    DBG(" ===");
 #endif
 }
 

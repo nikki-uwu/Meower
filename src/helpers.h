@@ -7,6 +7,7 @@
 #include <defines.h>
 #include <stdlib.h>
 #include <WiFi.h>           // <-- used by BootCheck::ESP_REST()
+#include <serial_io.h>
 
 
 
@@ -223,7 +224,7 @@ public:
                If that still fails (flash full / corrupted) we bail out.   */
         if (!prefs.begin("bootlog", /* readOnly = */ false))
         {
-            Serial.println("[BOOTCHECK] FATAL: cannot open/create bootlog");
+            DBG("[BOOTCHECK] FATAL: cannot open/create bootlog");
             return;                                   // skip fast-boot logic
         }
 
@@ -259,7 +260,7 @@ public:
              * ---------------------------------------------------------------- */
             prefs.putString("BootMode", "AccessPoint");
             prefs.end();                      // close cleanly
-            Serial.println("[BOOTCHECK] reset-storm → BootMode=AccessPoint");
+            DBG("[BOOTCHECK] reset-storm → BootMode=AccessPoint");
             delay(100);
             ESP.restart();                    // warm reboot - never returns
         }
