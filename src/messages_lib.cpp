@@ -21,6 +21,8 @@ extern BootCheck bootCheck;
 
 
 
+
+
 // External helpers
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -89,6 +91,7 @@ static void cmd_START_CONT(char **)
 static void cmd_STOP_CONT(char **)
 {
     continious_mode_start_stop(LOW);
+    DBG("CMD stop_cnt - user requested stop");
     net.stopStream();
 }
 static void cmd_SPI_SR(char **args, const char *orig)
@@ -152,7 +155,7 @@ static void cmd_SPI_SR(char **args, const char *orig)
     send_reply(rx, len);
 }
 
-// Hard reboot – returns only after the MCU restarts
+// Hard reboot - returns only after the MCU restarts
 static void cmd_ESP_REBOOT(char ** )
 {
     send_reply_line("OK: rebooting…");
@@ -161,7 +164,7 @@ static void cmd_ESP_REBOOT(char ** )
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-// FAMILY: SPI   –  format
+// FAMILY: SPI   -  format
 //                 spi  BOTH|MASTER|SLAVE  <len>  <byte0> … <byteN>
 // ---------------------------------------------------------------------------------------------------------------------------------
 void handle_SPI(char **ctx, const char * /*orig*/)
@@ -234,13 +237,13 @@ void handle_SPI(char **ctx, const char * /*orig*/)
     spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // back to 8 MHz
 
     // --------------------------------------------------------------------
-    // 5. REPLY – echo RX data to PC
+    // 5. REPLY - echo RX data to PC
     // --------------------------------------------------------------------
     send_reply(rx, len);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-// FAMILY: SYS  (prefix "sys") – case-insensitive
+// FAMILY: SYS  (prefix "sys") - case-insensitive
 // Commands:   reset   start_cnt   stop_cnt   esp_reboot   erase_flash
 //             FILTER_EQUALIZER_ON   | FILTER_EQUALIZER_OFF
 //             FILTER_DC_ON          | FILTER_DC_OFF
@@ -437,7 +440,7 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         prefs.clear();                 // delete all keys in this namespace
         prefs.end();
 
-        send_reply_line("OK: flash config erased – rebooting...");
+        send_reply_line("OK: flash config erased - rebooting...");
         delay(100);
 
         bootCheck.ESP_REST("user_erase_flash");
@@ -457,7 +460,7 @@ void handle_SYS(char **ctx, const char * /*orig*/)
 
 
 
-// FAMILY: USR  (prefix "usr")  – placeholder
+// FAMILY: USR  (prefix "usr")  - placeholder
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 void handle_USR(char **ctx, const char * /*orig*/)

@@ -52,6 +52,8 @@
   #define DBG(fmt, ...)  ((void)0)
 #endif
 
+#define SERIAL_BAUD  115200
+
 
 
 // Everything bellow is basicaly hardware defined or by desing and you do not want to changed it, unless you change

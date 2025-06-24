@@ -7,7 +7,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_wifi.h>           // deep power-save
-#include <AsyncUDP.h>      // Arduino wrapper – NO extra libs to install
+#include <AsyncUDP.h>      // Arduino wrapper - NO extra libs to install
 #include "defines.h"            // SSID, PASSWORD, UDP_IP, UDP_PORT_PC, UDP_PORT_C3
 #include "helpers.h"
 

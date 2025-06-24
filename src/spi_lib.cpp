@@ -30,7 +30,7 @@ static constexpr uint32_t CS_DELAY_US = 2; // us time delay
 
 
 
-// Helpers – chip-select control via direct GPIO writes
+// Helpers - chip-select control via direct GPIO writes
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 // CS helpers use WRITE_PERI_REG to toggle GPIOs directly,
@@ -97,7 +97,7 @@ void spiTransaction_OFF()
 
 
 
-// SPI TIME CRITICAL write/read with manual CS control – supports separate or simultaneous access to master/slave ADCs
+// SPI TIME CRITICAL write/read with manual CS control - supports separate or simultaneous access to master/slave ADCs
 // DMA burst with CS control
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -126,7 +126,7 @@ void IRAM_ATTR xfer(char            target,
         case 'M': cs_master_low(); break; // Master only
         case 'S': cs_slave_low();  break; // Slave only
         case 'B': cs_both_low();   break; // Both
-        case 'T':                  break; // Test mode – reserved for sending visible SPI clock pulses to the scope
+        case 'T':                  break; // Test mode - reserved for sending visible SPI clock pulses to the scope
         default : portEXIT_CRITICAL(&spiMux); return; // If non of those - stop time critical mode and exit the entire function
     }
 
@@ -134,7 +134,7 @@ void IRAM_ATTR xfer(char            target,
     // In datasheet i think there is something about at least 4 clocks after you pull chip select low (activate) so lets have
     // at least 2 us which will be more than exactat 2 MHz and more than enough for anything which is faster than that
     //          esp_rom_delay_us is a ROM routine used by Espressif themselves (ets_delay_us alias).
-    //          It waits by counting APB cycles, auto-scales with CPU clock – no
+    //          It waits by counting APB cycles, auto-scales with CPU clock - no
     //          fixed NOP loops that break when you change freq.
     //          Accuracy: ±1 CPU cycle (<13 ns at 80 MHz).
     //          Runs from IRAM, so no cache-miss hiccup while flash is off during RF.
@@ -148,7 +148,7 @@ void IRAM_ATTR xfer(char            target,
                          rxData,                       // RX
                          length);                      // counter of bytes
 
-    // Delay after CS goes HIGH – same reason: ensure full SPI timing cycle which ADS1299 wants
+    // Delay after CS goes HIGH - same reason: ensure full SPI timing cycle which ADS1299 wants
     esp_rom_delay_us(CS_DELAY_US); // must be ≥ 4 clocks
 
     // Deselect both pins after transfer

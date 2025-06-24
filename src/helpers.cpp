@@ -86,7 +86,7 @@ void handleSerialConfig()
         else
             Serial.println("[SERIAL] WARN: bootlog namespace not available");
 
-        Serial.println("OK: config saved – rebooting");
+        Serial.println("OK: config saved - rebooting");
         delay(100);
         bootCheck.ESP_REST("serial_cfg_saved");    // soft restart
     }

@@ -98,7 +98,7 @@ void handleRoot()
 
 void handleSave()
 {
-    // Disable Wi-Fi before committing to flash – prevents cache collision
+    // Disable Wi-Fi before committing to flash - prevents cache collision
     WiFi.mode(WIFI_MODE_NULL);
     delay(100);
 
@@ -120,7 +120,7 @@ void handleSave()
     else
         Serial.println("[AP] WARN: bootlog namespace not available");
 
-    server.send(200, "text/plain", "Saved – rebooting…");
+    server.send(200, "text/plain", "Saved - rebooting…");
     delay(100);
     bootCheck.ESP_REST("ap_cfg_saved");
 }
@@ -130,11 +130,11 @@ void handleSave()
 //  maybeEnterAPMode()
 //      • Called ONCE, near the top of setup().
 //      • Runs the captive portal unless BootMode == "NormalMode".
-//      • Ignores the presence or absence of an SSID – the flag is the ONLY
+//      • Ignores the presence or absence of an SSID - the flag is the ONLY
 //        authority for the operating mode.
 // ──────────────────────────────────────────────────────────────────────────────
 // ──────────────────────────────────────────────────────────────────────────────
-//  maybeEnterAPMode()   –  DEBUG-INSTRUMENTED VERSION
+//  maybeEnterAPMode()   -  DEBUG-INSTRUMENTED VERSION
 //
 //  ─ Flow ─
 //     1.  Reads BootMode from NVS  →  prints the exact value / error
@@ -153,7 +153,7 @@ void maybeEnterAPMode()
     Preferences bm;
     if (!bm.begin("bootlog", /*readOnly=*/false))
     {
-        Serial.println("ERR: NVS open failed – forcing AccessPoint");
+        Serial.println("ERR: NVS open failed - forcing AccessPoint");
     }
     String mode = bm.getString("BootMode", "<missing>");
     Serial.print  ("DBG: BootMode read = ‘");
@@ -164,7 +164,7 @@ void maybeEnterAPMode()
     /* 2 ──────────────────────────────────────────────────────────────────── */
     if (mode == "NormalMode")
     {
-        Serial.println("DBG: NormalMode – skip portal, continue with STA");
+        Serial.println("DBG: NormalMode - skip portal, continue with STA");
         return;                                           // ← exit function
     }
 
@@ -180,7 +180,7 @@ void maybeEnterAPMode()
 
     bool ap_ok = WiFi.softAP(AP_SSID, AP_PASS, 1);
     if (ap_ok)
-        Serial.printf("DBG: softAP OK  – SSID: %s\n", AP_SSID);
+        Serial.printf("DBG: softAP OK  - SSID: %s\n", AP_SSID);
     else
         Serial.println ("ERR: softAP FAILED");
 
@@ -207,7 +207,7 @@ void maybeEnterAPMode()
         static uint32_t last = 0;
         if (millis() - last > 5000)
         {
-            Serial.printf("DBG: portal alive – free heap %u B\n", esp_get_free_heap_size());
+            Serial.printf("DBG: portal alive - free heap %u B\n", esp_get_free_heap_size());
             last = millis();
         }
         delay(2);

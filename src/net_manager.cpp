@@ -13,12 +13,12 @@ extern QueueHandle_t cmdQue;
 
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-// Wi-Fi event handler – plain C function pointer (no captures)
+// Wi-Fi event handler - plain C function pointer (no captures)
 // ---------------------------------------------------------------------------------------------------------------------------------
 static NetManager* s_netMgr = nullptr;   // set once in NetManager::begin()
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-// wifiEventCb() – global Wi-Fi event hook
+// wifiEventCb() - global Wi-Fi event hook
 //
 // - Must be a plain C function (no captures) because WiFi.onEvent() on
 //   the ESP32 Arduino core expects a raw pointer, not std::function.
@@ -41,7 +41,7 @@ static void wifiEventCb(WiFiEvent_t event, WiFiEventInfo_t /*info*/)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-// NetManager::onWifiEvent() – runs in Wi-Fi driver task, adjusts reconnect flags
+// NetManager::onWifiEvent() - runs in Wi-Fi driver task, adjusts reconnect flags
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::onWifiEvent(WiFiEvent_t event)
 {
@@ -60,7 +60,7 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
         esp_err_t rc = esp_wifi_connect();      // async, non-blocking
         if (rc == ESP_ERR_WIFI_STATE)
         {
-            // Already reconnecting – leave _reconnPend true
+            // Already reconnecting - leave _reconnPend true
             // and keep the 1-minute wall timer running.
         }
     }
@@ -79,7 +79,7 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
 // 1. Connect to WiFi as a station.
 // 2. Open the existing WiFiUDP socket for TX.
 // 3. Start an AsyncUDP listener for RX.  This is event-driven, so the CPU
-//    sleeps until a packet arrives – there is no polling overhead.
+//    sleeps until a packet arrives - there is no polling overhead.
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::begin(const char* ssid,
                        const char* pass,
@@ -99,11 +99,11 @@ void NetManager::begin(const char* ssid,
     // 3. Outbound socket
     _udp.begin(0);
 
-    // 4. Inbound socket – zero-poll AsyncUDP
+    // 4. Inbound socket - zero-poll AsyncUDP
     _asyncRx.listen(localPortCtrl);
     _asyncRx.onPacket([this](AsyncUDPPacket& pkt) { handleRxPacket(pkt); });
 
-    // 5. Link-state callback – event-driven watchdog
+    // 5. Link-state callback - event-driven watchdog
     s_netMgr = this;                     // expose this instance
     WiFi.onEvent(wifiEventCb);           // register static handler
 
@@ -116,7 +116,7 @@ void NetManager::begin(const char* ssid,
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::sendCtrl(const void* data, size_t len)
 {
-    // Tiny guard – avoid building an empty UDP packet.
+    // Tiny guard - avoid building an empty UDP packet.
     if (len == 0) return;
     _udp.beginPacket(_remoteIP, _localPortCtrl); // use control port
     _udp.write(static_cast<const uint8_t*>(data), len);
@@ -124,7 +124,7 @@ void NetManager::sendCtrl(const void* data, size_t len)
 }
 void NetManager::sendData(const void* data, size_t len)
 {
-    // Tiny guard – avoid building an empty UDP packet.
+    // Tiny guard - avoid building an empty UDP packet.
     if (_state != LinkState::STREAMING || len == 0) return;
     _udp.beginPacket(_remoteIP, _remotePortData); // use data port
     _udp.write(static_cast<const uint8_t*>(data), len);
@@ -151,7 +151,7 @@ void NetManager::update(void)
     static LinkState prevState = _state;  
 
     // --------------------------------------------------------------------
-    // 1. STREAMING watchdog – drop to IDLE if we have not heard from the PC
+    // 1. STREAMING watchdog - drop to IDLE if we have not heard from the PC
     // for more than _timeoutMs (10 000 ms by default).
     //
     // The TCP/IP task updates _lastRxMs when a packet arrives. If that write/interrupt
@@ -181,7 +181,7 @@ void NetManager::update(void)
     }
 
     // --------------------------------------------------------------------
-    // 2. GLOBAL silence guard – covers IDLE as well
+    // 2. GLOBAL silence guard - covers IDLE as well
     //    If we have not heard a single byte for _timeoutMs, assume the PC
     //    is gone and restart discovery beacons even when not streaming.
     // --------------------------------------------------------------------
@@ -193,7 +193,7 @@ void NetManager::update(void)
         xQueueReset(cmdQue);            // clear stale commands
     }
 
-    // 2.1. Wi-Fi reconnect watchdog – fail-safe if >1 min
+    // 2.1. Wi-Fi reconnect watchdog - fail-safe if >1 min
     if (_reconnPend && (now - _lastFailMs) > WIFI_RECONNECT_GIVEUP_MS)
     {
         DBG("FAILSAFE TIMER: reconnect >1 min"); 
@@ -201,7 +201,7 @@ void NetManager::update(void)
     }
 
     // --------------------------------------------------------------------
-    // 3. Discovery beacon – 1 s cadence until a packet is heard again
+    // 3. Discovery beacon - 1 s cadence until a packet is heard again
     // --------------------------------------------------------------------
     if (!_peerFound && (now - _lastBeaconMs) >= WIFI_BEACON_PERIOD)
     {
@@ -232,7 +232,7 @@ void NetManager::update(void)
     debugGate(now);                      // prints only when _dbgActive
 }
 
-// Drive LED – one call per loop()
+// Drive LED - one call per loop()
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::driveLed(Blinker &led) noexcept

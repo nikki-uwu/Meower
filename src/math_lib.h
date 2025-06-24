@@ -27,7 +27,7 @@ static inline void removeAdcPreambles(const uint8_t * const rawADCdata   ,
     memcpy(&parsedADCdata[24], rawADCdata + 30u, 24u); // again, 24 bytes is 8 raw channels, each takes 3 bytes (24 bits)
 }
 
-// unpack_24to32_and_gain – Unpack 24-bit signed ADC data to 32-bit signed ints for 16 channels and applies Digital Gain
+// unpack_24to32_and_gain - Unpack 24-bit signed ADC data to 32-bit signed ints for 16 channels and applies Digital Gain
 // The signal is also additionaly left-shifted by 8 bits (multiplied by 256) to expand it into the full dynamic range of a signed 32-bit integer
 // even if digital gain is not applied so we do not waste those 8 bits in general
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -35,8 +35,8 @@ static inline void removeAdcPreambles(const uint8_t * const rawADCdata   ,
 // This function takes a pointer to 48 bytes of raw ADC data (16 × 3 bytes) and unpacks into 16 int32_t values.
 // Sign extension is hardcoded for ADS1299 format (always 24-bit, two's complement, MSB first).
 // Data is shifted by 8 to the left (<<8) to let signal occupy the entire dynamic range of int32
-// Input:  const uint8_t * data_in  – pointer to 48 raw ADC bytes (from ADS1299)
-//         int32_t * const data_out – pointer to 16 int32_t output slots
+// Input:  const uint8_t * data_in  - pointer to 48 raw ADC bytes (from ADS1299)
+//         int32_t * const data_out - pointer to 16 int32_t output slots
 // Result: data_out[0..15] filled with signed 32-bit values which were scaled for DSP/filtering and amplified by digital gain
 // ---------------------------------------------------------------------------------------------------------------------------------
 static inline void unpack_24to32_and_gain(const uint8_t * data_in    ,
@@ -59,13 +59,13 @@ static inline void unpack_24to32_and_gain(const uint8_t * data_in    ,
     }
 }
 
-// pack_32to24 – Pack 16 signed 32-bit ints back to ADS1299 24-bit format
+// pack_32to24 - Pack 16 signed 32-bit ints back to ADS1299 24-bit format
 // ------------------------------------------------------------------------------------------------------------------
 // Converts 16 channels of int32_t (after DSP) into signed 24-bit, big-endian (MSB first) byte stream for output.
 // Signal is scaled back by 8 bits, to bring from int32 to int24 (we added shift <<8 during unpacking)
 // Values are clamped to ADS1299 range [-0x800000, +0x7FFFFF] before packing.
-// Input:  const int32_t * const data_in   – pointer to 16 int32_t (filtered/sample data)
-//         uint8_t *             data_out  – pointer to 48 output bytes (16 × 3 bytes)
+// Input:  const int32_t * const data_in   - pointer to 16 int32_t (filtered/sample data)
+//         uint8_t *             data_out  - pointer to 48 output bytes (16 × 3 bytes)
 // Result: data_out[0..47] filled with packed 24-bit signed values, ready to send or store
 // ------------------------------------------------------------------------------------------------------------------
 static inline void pack_32to24(const int32_t * const data_in ,
@@ -90,7 +90,7 @@ static inline void pack_32to24(const int32_t * const data_in ,
     }
 }
 
-// fir_filter_16ch_7tap – 7-tap FIR for 16 channels, in-place, cache-optimal, with integrated row index prep
+// fir_filter_16ch_7tap - 7-tap FIR for 16 channels, in-place, cache-optimal, with integrated row index prep
 // ------------------------------------------------------------------------------------------------------------------
 // Applies a hardcoded 7-tap FIR filter to 16 channels using a history buffer [channel][tap].
 // Handles circular buffer index management and row index calculation internally.
@@ -194,7 +194,7 @@ static inline void adcEqualizer_16ch_7tap(int32_t * data_inout  , // [16]: in-pl
     }
 }
 
-// dcBlockerIIR_16ch_2p – 2-pole high-pass IIR (DC removal), 16 channels, in-place, cache-optimal, private state
+// dcBlockerIIR_16ch_2p - 2-pole high-pass IIR (DC removal), 16 channels, in-place, cache-optimal, private state
 // ------------------------------------------------------------------------------------------------------------------
 // Removes DC component from 16 channels using a fixed-point 2-pole Butterworth IIR filter.
 // - data_inout:         pointer to 16 int32_t values to filter (input and output, same buffer)
@@ -312,7 +312,7 @@ static inline void dcBlockerIIR_16ch_2p(int32_t *      data_inout        , // [1
     }
 }
 
-// notch5060Hz_16ch_4p – 4th-order 50/60 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
+// notch5060Hz_16ch_4p - 4th-order 50/60 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
 // ------------------------------------------------------------------------------------------------------------------
 // Notch filter at 50/60 Hz. 4th order = two cascaded 2nd-order sections (biquads)
 // - data_inout:         pointer to 16 int32_t values to filter (input and output, same buffer)
@@ -421,7 +421,7 @@ static inline void notch5060Hz_16ch_4p(int32_t *      data_inout        ,
     }
 }
 
-// notch100120Hz_16ch_2p – 4th-order 100/120 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
+// notch100120Hz_16ch_2p - 4th-order 100/120 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
 // ------------------------------------------------------------------------------------------------------------------
 // Notch filter at 100/120 Hz. 4th order = two cascaded 2nd-order sections (biquads)
 // - data_inout:         pointer to 16 int32_t values to filter (input and output, same buffer)

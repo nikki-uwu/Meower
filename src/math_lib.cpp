@@ -3,13 +3,13 @@
 // // Generate fixed-point IIR filter coefficients for Butterworth HPF or Notch
 // // ------------------------------------------------------------------------------
 // // Input:
-// //   fs         – sampling frequency (e.g. 250 Hz)
-// //   f0         – cutoff (for high-pass) or notch center frequency
-// //   order      – filter order (typically 2)
-// //   Q          – quality factor for notch filters; set to 0.0 for Butterworth HPF
-// //   B_out[3]   – output numerator coefficients (Q1.31 fixed-point)
-// //   A_out[2]   – output denominator coefficients (Q1.31 fixed-point)
-// //   shift_out  – output shift value to scale result safely back down to int32
+// //   fs         - sampling frequency (e.g. 250 Hz)
+// //   f0         - cutoff (for high-pass) or notch center frequency
+// //   order      - filter order (typically 2)
+// //   Q          - quality factor for notch filters; set to 0.0 for Butterworth HPF
+// //   B_out[3]   - output numerator coefficients (Q1.31 fixed-point)
+// //   A_out[2]   - output denominator coefficients (Q1.31 fixed-point)
+// //   shift_out  - output shift value to scale result safely back down to int32
 // //
 // // Notes:
 // //   - Only supports 2nd-order Butterworth HPF or Notch
@@ -107,16 +107,16 @@
 // //   safe shift, and converts all values into int32_t using a Q1.31-style scale.
 // //
 // // Inputs:
-// //   A_in[]         – pointer to float array of denominator coefficients (Af)
-// //   B_in[]         – pointer to float array of numerator coefficients (Bf)
-// //   len            – number of coefficients in each array (both must be same length)
-// //   safety_margin  – guard multiplier. use powers of 2. 1 means no guard. 2 means we protect by 1 bit, 4 means
+// //   A_in[]         - pointer to float array of denominator coefficients (Af)
+// //   B_in[]         - pointer to float array of numerator coefficients (Bf)
+// //   len            - number of coefficients in each array (both must be same length)
+// //   safety_margin  - guard multiplier. use powers of 2. 1 means no guard. 2 means we protect by 1 bit, 4 means
 // //                    by 2 bitd and so on. But in general for this you never need more than 2. Use ether 1 or 2
 // //
 // // Outputs:
-// //   A_scaled[]     – output scaled int32 array for A coefficients
-// //   B_scaled[]     – output scaled int32 array for B coefficients
-// //   shift_out      – how many bits we scaled up by (to be used for fixed-point DSP)
+// //   A_scaled[]     - output scaled int32 array for A coefficients
+// //   B_scaled[]     - output scaled int32 array for B coefficients
+// //   shift_out      - how many bits we scaled up by (to be used for fixed-point DSP)
 // //
 // // Why this works:
 // //   - Q1.31 format stores numbers in the range [-1.0, +1.0) in signed int32
@@ -149,7 +149,7 @@
 //     // Step 3: Find how many bits this padded value would require
 //     float log2val = log2f(padded_val);
 
-//     // Step 4: Convert to final shift – for Q1.31 max safe shift is 31
+//     // Step 4: Convert to final shift - for Q1.31 max safe shift is 31
 //     int shift = 31 - (int)ceilf(log2val);
 //     if (shift < 0) shift = 0;
 
@@ -178,14 +178,14 @@
 // //   - Scaling is done *after* convolution for maximum numeric fidelity.
 // //
 // // Inputs:
-// //   fs        – sampling frequency (e.g. 250 Hz)
-// //   f0        – notch center frequency (e.g. 50 or 100 Hz)
-// //   Q         – quality factor (must be > 0.0). Higher Q = narrower notch
+// //   fs        - sampling frequency (e.g. 250 Hz)
+// //   f0        - notch center frequency (e.g. 50 or 100 Hz)
+// //   Q         - quality factor (must be > 0.0). Higher Q = narrower notch
 // //
 // // Outputs:
-// //   B_out[6]  – output numerator coefficients (Q1.31, B[0..5])
-// //   A_out[5]  – output denominator coefficients (Q1.31, A[1..5]) — A[0] is always 1.0, not stored
-// //   shift_out – bit shift needed to safely return from Q1.31 fixed-point to int32
+// //   B_out[6]  - output numerator coefficients (Q1.31, B[0..5])
+// //   A_out[5]  - output denominator coefficients (Q1.31, A[1..5]) — A[0] is always 1.0, not stored
+// //   shift_out - bit shift needed to safely return from Q1.31 fixed-point to int32
 // void design_iir_notch_order4(float fs,
 //                              float f0,
 //                              float Q,
@@ -245,7 +245,7 @@
 // // ---------------------------------------------------------------------------------------------------------------------------------
 // // Purpose:
 // //   Creates a 2nd-order high-pass IIR filter with a Butterworth response, typically used for DC removal
-// //   (e.g., to suppress frequencies below 0.5–1.0 Hz in EEG).
+// //   (e.g., to suppress frequencies below 0.5-1.0 Hz in EEG).
 // //
 // // Notes:
 // //   - Filter is always designed as 2nd order
@@ -253,13 +253,13 @@
 // //   - Output coefficients are scaled to fixed-point Q1.31 with a shared shift
 // //
 // // Inputs:
-// //   fs        – sampling frequency (e.g. 250 Hz)
-// //   f0        – cutoff frequency for high-pass filter (e.g. 0.5 or 1.0 Hz)
+// //   fs        - sampling frequency (e.g. 250 Hz)
+// //   f0        - cutoff frequency for high-pass filter (e.g. 0.5 or 1.0 Hz)
 // //
 // // Outputs:
-// //   B_out[3]  – output numerator coefficients (Q1.31, B[0..2])
-// //   A_out[2]  – output denominator coefficients (Q1.31, A[1..2]) — A[0] is always 1.0, not stored
-// //   shift_out – shift needed to scale results safely back to int32
+// //   B_out[3]  - output numerator coefficients (Q1.31, B[0..2])
+// //   A_out[2]  - output denominator coefficients (Q1.31, A[1..2]) — A[0] is always 1.0, not stored
+// //   shift_out - shift needed to scale results safely back to int32
 // void design_iir_dc_blocker(float fs,
 //                            float f0,
 //                            int32_t* B_out,
@@ -269,7 +269,7 @@
 //     float nyquist = fs * 0.5f;
 //     float norm_f  = f0 / nyquist;
 
-//     // Bilinear transform trick – turns analog poles into digital
+//     // Bilinear transform trick - turns analog poles into digital
 //     float ita = 1.0f / tanf(M_PI * norm_f);
 //     float q   = sqrtf(2.0f); // Standard Butterworth Q
 

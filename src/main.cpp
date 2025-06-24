@@ -10,6 +10,7 @@
 #include <math_lib.h>
 #include <ap_config.h>
 #include <Preferences.h>
+#include <serial_io.h>
 
 
 
@@ -24,6 +25,8 @@ SPIClass spi(SPI);                 // Use the default SPI instance on the ESP32-
 Battery_Sense BatterySense(PIN_BAT_SENSE, BAT_SCALE, BAT_SAMPLING_MS); // defaults: GPIO-4, scaling 0.00428, 1000 ms (1 s) between battery sampling
 Blinker       LEDheartBeat(PIN_LED      , LED_ON_MS, LED_PERIOD_MS  ); // GPIO-20, 100 ms ON, 5000 ms period
 BootCheck     bootCheck;
+DebugLogger   Debug(Serial, SERIAL_BAUD);   // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
+SerialCli     CLI(Serial, SERIAL_BAUD);     // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
 
 // FreeRTOS handles
 static TaskHandle_t  adcTaskHandle = nullptr;
@@ -211,7 +214,7 @@ void ads1299_full_reset()
 
     // Next I want to preset testing signals parameters - FOR BOTH ADCs
     // Test signal are generated internaly
-    // Test signal amplitude 3.75 mV (2 × –(VREFP – VREFN) / 2400, Vwhere on this board VREFP is +4.5V and VREFN is 0 V)
+    // Test signal amplitude 3.75 mV (2 × -(VREFP - VREFN) / 2400, Vwhere on this board VREFP is +4.5V and VREFN is 0 V)
     // Period of miander is 1 second
     // bit 7        | 6        | 5        | 4                   | 3        | 2                  | 1           0
     // use Always 1 | Always 1 | Always 0 | Test source ext/int | Always 0 | Test sig amplitude | Test sig freq
@@ -328,13 +331,13 @@ int32_t udp_read(char* buf, size_t cap)
 // ---------------------------------------------------------------------------------------------------------------------------------
 // DRDY interrupt for ADC task
 // Called **automatically** the very moment the ADS1299’s DRDY pin makes a LOW transition
-// (FALLING edge) – because in `setup()` you did:
+// (FALLING edge) - because in `setup()` you did:
 //     attachInterrupt(PIN_DRDY, drdy_isr, FALLING);
 //
 // Timing constraints
 // -------------------
-// • DRDY goes LOW once per conversion (500 Hz → every 2 ms, 4 kHz → every 250 µs).
-// • The ISR must finish extremely quickly (< 10–15 µs) so we do *not* read SPI here.
+// - DRDY goes LOW once per conversion (500 Hz → every 2 ms, 4 kHz → every 250 µs).
+// - The ISR must finish extremely quickly (< 10-15 us) so we do *not* read SPI here.
 //   All heavy lifting is delegated to a FreeRTOS task; the ISR’s only job is to wake it.
 //
 void IRAM_ATTR drdy_isr() // IRAM_ATTR: place code in IRAM, not flash -> no cache miss
@@ -398,14 +401,14 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
     uint32_t bytesWritten = 0u;
 
     // Start infinite loop
-    for (;;) // Endless loop – a FreeRTOS task never returns.
+    for (;;) // Endless loop - a FreeRTOS task never returns.
     {
         // If we just started continuous mode we must clear all internal variables and buffers
         if (continuousReading && !wasReading)
         {
             ulTaskNotifyTake(pdTRUE, 0); // clear stale notify count
 
-            // Reset cursor – next packet starts at byte 0
+            // Reset cursor - next packet starts at byte 0
             bytesWritten = 0;
         }
 
@@ -484,7 +487,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
                            dataBuffer,     // pointer to packet
                            0); // wait if both slots are full in que. It means if UDP never reads from que DSP will stay here forever. DSP is not allowed to write to que if que is full
 
-                // Reset cursor – next packet starts at byte 0
+                // Reset cursor - next packet starts at byte 0
                 bytesWritten = 0;
             }
         }
@@ -515,7 +518,7 @@ void task_dataTransmission(void*)
     static uint8_t txBuf[UDP_PACKET_BYTES];
 
     // Start infinite loop
-    for (;;) // Endless loop – a FreeRTOS task never returns.
+    for (;;) // Endless loop - a FreeRTOS task never returns.
     {
 
         // wait forever until DSP overwrites mailbox with a new set of processed frames
@@ -537,12 +540,21 @@ void task_dataTransmission(void*)
 // Setting up pins, wifi connection, reset ADC at the start of the board and initialize ADC and wifi tasks
 void setup()
 {
-    // Run serial so 
-    Serial.begin(115200);
+    // Run Serial - Serial as object is project wise defined object provided by ESP
+    // that is why we can call it this way without declare anywhere
+    Serial.begin(SERIAL_BAUD);
+    Debug.begin();               // no baud arg needed, prints banner
+    CLI.begin();                 // prints CLI banner
     delay(10);
 
-    bootCheck.init();            // shifts history & may set BootMode
-    maybeEnterAPMode();          // starts portal & never returns in AP mode
+    // bootCheck controlls hard reset to access point mode.
+    // if we turned on/off board several time in 5 seconds it will force board
+    // to jump in Access Point mode instead of normal mode even if WiFi
+    // data was setted up correctly
+    bootCheck.init();
+
+    // Start AP mode if we hard switch reset or no wifi data present
+    maybeEnterAPMode();
 
 
 
@@ -552,7 +564,7 @@ void setup()
 
     if (!netconf_ok)
     {
-        Serial.println("[BOOT] netconf namespace not found – creating");
+        Serial.println("[BOOT] netconf namespace not found - creating");
         prefs.end();  // always close before re-opening
 
         if (prefs.begin("netconf", false))  // open write-mode
@@ -567,7 +579,7 @@ void setup()
         }
         else
         {
-            Serial.println("[BOOT] Failed to create netconf NVS – staying in AP mode");
+            Serial.println("[BOOT] Failed to create netconf NVS - staying in AP mode");
             prefs.end();
             return;
         }
@@ -584,7 +596,7 @@ void setup()
 
     if (ssid.isEmpty())
     {
-        Serial.println("[WIFI] No SSID set – entering AP mode");
+        Serial.println("[WIFI] No SSID set - entering AP mode");
         Preferences bm;
         if (bm.begin("bootlog", false))          // write-mode
         {
@@ -657,7 +669,7 @@ void setup()
     msgCtx.udp_port_pc_ctrl = port_ctrl;
     msg_init(&msgCtx);
 
-    // Just to be 100 % sure – locks the CPU clock to 160 MHz.
+    // Just to be 100 % sure - locks the CPU clock to 160 MHz.
     // So, if clock here is not 80 Mhz anymore - reason to push 160 was to make sure, that
     // ADC and DSP task is so fast i still have a lot of overhead before next sample appears. And
     // based on what i've seen when i felt that processing is 99% ready - 160 MHz uses just maybe 30 mW more
@@ -672,7 +684,7 @@ void setup()
     // FreeRTOS resources
     // 5-slot queue that holds exactly 5 complete UDP datagrams.
     //
-    // NOTE – This queue is not a read/write-collision guard.  The kernel
+    // NOTE - This queue is not a read/write-collision guard.  The kernel
     //        already serialises access. The extra slots simply adds head-
     //        room: the ADC task keeps running even if the queue is FULL.
     //        it means ADC and processing are safe and sender task should
@@ -687,7 +699,7 @@ void setup()
     //   2) Lock releases -> higher-priority ADC pre-empts and refills slot 0.
     //   3) If the stall persists, ADC writes the next packet into slot 1, 2, 3, 4.
     //      Queue now full -> ADC never blocks and continue the processing skipping putting frames inside
-    //   4) UDP later drains slot 0, then slot 1 and so on – FIFO order guaranteed by
+    //   4) UDP later drains slot 0, then slot 1 and so on - FIFO order guaranteed by
     //      FreeRTOS, no extra bookkeeping needed.
     //   5) Queue empty -> both tasks resume normal cadence; occasional
     //      overlaps handled transparently with zero frame loss.
@@ -696,7 +708,7 @@ void setup()
     //   - ADC and DSP task never blocks. If sender task is too slow and adc task cant write it will skip writing right away
     //   - Data Transmittion task blocks until at least one item is inside the que and if ADC/DSP task is running
     adcFrameQue = xQueueCreate(5,                 // 5 items (two full packets)
-                               ADC_PACKET_BYTES); // size of one ADC frames with time stamps – battery not included
+                               ADC_PACKET_BYTES); // size of one ADC frames with time stamps - battery not included
 
     // Que for command from PC
     cmdQue = xQueueCreate(8,               // up to 8 in-flight commands

@@ -12,7 +12,7 @@
 
 
 
-//  getTimer8us – 8 µs time-base
+//  getTimer8us - 8 µs time-base
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 //  esp_timer_get_time() returns a 64-bit micro-second counter.
@@ -29,7 +29,7 @@ void handleSerialConfig();
 
 
 
-// Battery_Sense  – cached, non-blocking ADC reader
+// Battery_Sense  - cached, non-blocking ADC reader
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 class Battery_Sense
@@ -39,12 +39,12 @@ class Battery_Sense
         static constexpr std::size_t DATA_SIZE = sizeof(value_t);
 
         /**
-         *  @param pin         – GPIO that carries the divided-down battery voltage
-         *  @param scale       – volts / ADC-count  (V = raw * scale).  Calibrate once -> hard-code.
-         *  @param sample_ms   – minimum *wall-clock* interval between two physical ADC reads
-         *  @param alpha       – IIR low-pass coefficient (0 ... 1).  Smaller -> heavier smoothing.
+         *  @param pin         - GPIO that carries the divided-down battery voltage
+         *  @param scale       - volts / ADC-count  (V = raw * scale).  Calibrate once -> hard-code.
+         *  @param sample_ms   - minimum *wall-clock* interval between two physical ADC reads
+         *  @param alpha       - IIR low-pass coefficient (0 ... 1).  Smaller -> heavier smoothing.
          *
-         *  The constructor does **not** read the ADC – the first call to update() does.
+         *  The constructor does **not** read the ADC - the first call to update() does.
          */
         Battery_Sense(uint8_t   pin        = 4,
                       value_t   scale      = 0.00428f,
@@ -112,17 +112,17 @@ class Battery_Sense
 
 
 
-// Blinker  – non-blocking LED flasher
+// Blinker  - non-blocking LED flasher
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 class Blinker
 {
     public:
         /**
-         *  @param pin         – LED GPIO
-         *  @param on_ms       – time LED stays *lit* each cycle
-         *  @param period_ms   – full cycle length
-         *  @param activeLow   – true = LED wired to Vcc through resistor (usual on dev-boards)
+         *  @param pin         - LED GPIO
+         *  @param on_ms       - time LED stays *lit* each cycle
+         *  @param period_ms   - full cycle length
+         *  @param activeLow   - true = LED wired to Vcc through resistor (usual on dev-boards)
          */
         Blinker(uint8_t  pin,
                 uint32_t on_ms       = 100,
@@ -137,7 +137,7 @@ class Blinker
             digitalWrite(_pin, _inactiveLevel());          // start OFF
         }
 
-        //  Zero-cost, non-blocking – call each loop() pass.
+        //  Zero-cost, non-blocking - call each loop() pass.
         inline void update() noexcept
         {
             if (!_enabled) return;
@@ -195,28 +195,25 @@ class Blinker
 
 
 
-// ──────────────────────────────────────────────────────────────────────────────
-// BootCheck – detects three fast boots (<3 s each).
+
+// BootCheck - detects three fast boots (<3 s each).
 //
-//  • On every boot we shift the history (slot2→3,1→2,0→1) and insert a new
-//    placeholder “slow” record in slot 0.  When setup() runs long enough
-//    we overwrite the placeholder with the real uptime.
+// - On every boot we shift the history (slot2 -> 3, 1 -> 2, 0 -> 1) and insert a new
+//   placeholder “slow” record in slot 0.  When setup() runs long enough
+//   we overwrite the placeholder with the real uptime.
 //
-//  • If the *last* three boots were “fast” and flagged “a” we only write
-//        BootMode = "AccessPoint"
-//    into the same **bootlog** namespace – ***no more flash-erase***.
+// - If the last three boots were “fast” and flagged “a” we only write
+//   BootMode = "AccessPoint"
 //
-//  • The first lines of setup() (see main.cpp) look at BootMode.  If it is
-//    MISSING **or** equals "AccessPoint" we immediately jump into the AP
-//    portal and stay there until the user saves a config.  handleSave() or
-//    the serial “apply and reboot” command then stores
-//        BootMode = "NormalMode"
-//    just before rebooting.
+// - The first lines of setup() (see main.cpp) look at BootMode. If it is
+//   MISSING or equals "AccessPoint" we immediately jump into the AP
+//   portal and stay there until the user saves a config. handleSave() or
+//   the serial “apply and reboot” command then stores
+//       BootMode = "NormalMode"
+//   just before rebooting.
 //
-//  • Because the fast-reboot storm no longer wipes *netconf* the Wi-Fi driver
-//    never runs concurrently with an NVS erase, eliminating the flash cache
-//    panic that plagued earlier attempts.
-// ──────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
 class BootCheck
 {
 public:
@@ -264,14 +261,14 @@ public:
             prefs.end();                      // close cleanly
             Serial.println("[BOOTCHECK] reset-storm → BootMode=AccessPoint");
             delay(100);
-            ESP.restart();                    // warm reboot – never returns
+            ESP.restart();                    // warm reboot - never returns
         }
 
         prefs.putUInt("time0", millis());   // overwrite placeholder
         prefs.end();                        // CLOSE
     }
 
-    // kept for API completeness – main.cpp no longer calls update()
+    // kept for API completeness - main.cpp no longer calls update()
     inline void update() {}
 
     void ESP_REST(const char* reason = "user_reboot")
