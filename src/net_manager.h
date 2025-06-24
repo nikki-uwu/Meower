@@ -54,7 +54,7 @@ public:
     inline bool wantStream() const noexcept
     { return _state == LinkState::STREAMING; }
 
-    enum class LedMode : uint8_t { DISC, IDLE, STRM };
+    enum class LedMode : uint8_t { DISC, IDLE, STRM, LOST }; // fail-safe blink
     inline LedMode ledMode() const noexcept
     {
         switch (_state)
@@ -72,6 +72,12 @@ public:
     uint16_t getDataPort()    const { return _remotePortData; }
 
 
+    void onWifiEvent(WiFiEvent_t event);   // called by global callback
+
+    void debugPrint(void);      // prints all runtime flags when NET_DEBUG
+
+    inline void debugGate(uint32_t now);
+
 private:
     WiFiUDP   _udp;
     IPAddress _remoteIP;       // filled in begin() with fromString()
@@ -83,7 +89,15 @@ private:
     bool      _peerFound    = false;
 
     LinkState _state     { LinkState::DISCONNECTED };
-    uint32_t  _timeoutMs { WIFI_SERVER_TIMEOUT };      // 30 s of silence from server => stop streaming
+    uint32_t  _timeoutMs { WIFI_SERVER_TIMEOUT };      // 10 s of silence from server => stop streaming
+
+    volatile uint32_t  _lastFailMs  = 0;     // first millis() when Wi-Fi dropped
+    volatile bool      _reconnPend  = false; // reconnect attempt in progress
+    volatile bool      _giveUp      = false; // set by failSafe()
+
+    void failSafe(void);            // called after timeout
+
+    bool      _dbgActive   = false; // true while link is streaming
 
     // RAW-LATENCY, ZERO-POLL UDP **RECEIVE** PATH
     // -------------------------------------------------------------------------------------------

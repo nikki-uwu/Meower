@@ -1,11 +1,10 @@
-// Includes
-// ---------------------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------------------
 #include <Arduino.h>
 #include <cstring>
-#include "net_manager.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <esp_event.h>        // arduino_event_id_t, arduino_event_info_t
+#include <esp_err.h>
+#include <net_manager.h>
 
 
 //  cmdQue is defined in main.cpp.  Bring it into this compilation unit so
@@ -13,7 +12,66 @@
 extern QueueHandle_t cmdQue;
 
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Wi-Fi event handler – plain C function pointer (no captures)
+// ---------------------------------------------------------------------------------------------------------------------------------
+static NetManager* s_netMgr = nullptr;   // set once in NetManager::begin()
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// wifiEventCb() – global Wi-Fi event hook
+//
+// - Must be a plain C function (no captures) because WiFi.onEvent() on
+//   the ESP32 Arduino core expects a raw pointer, not std::function.
+// - The Wi-Fi driver task can emit events very early in boot, before
+//   NetManager::begin() runs.  In that window the global instance
+//   pointer (s_netMgr) is still nullptr, so we guard against it.
+// - After NetManager::begin() executes, s_netMgr is set and every
+//   subsequent event is forwarded to NetManager::onWifiEvent().
+// ---------------------------------------------------------------------------------------------------------------------------------
+static void wifiEventCb(WiFiEvent_t event, WiFiEventInfo_t /*info*/)
+{
+    // The Wi-Fi driver task can emit events very early in boot, before
+    // NetManager::begin() runs.  In that window the global instance
+    DBG("wifiEventCb() id=%d", static_cast<int>(event)); 
+    if (s_netMgr)
+    {
+        DBG("wifiEventCb: forward to NetManager"); 
+        s_netMgr->onWifiEvent(event);   // forward to class instance
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// NetManager::onWifiEvent() – runs in Wi-Fi driver task, adjusts reconnect flags
+// ---------------------------------------------------------------------------------------------------------------------------------
+void NetManager::onWifiEvent(WiFiEvent_t event)
+{
+    DBG("onWifiEvent() id=%d  state=%u", static_cast<int>(event),
+                                        static_cast<uint8_t>(_state)); 
+
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+    {
+        DBG("EVENT DISCONNECTED  rxΔ=%lu", millis() - _lastRxMs);
+        _state      = LinkState::DISCONNECTED; // stop sending right now
+        _peerFound  = false;                   // force beacon handshake
+        _lastFailMs = millis();
+        _reconnPend = true;
+        _giveUp     = false;
+
+        esp_err_t rc = esp_wifi_connect();      // async, non-blocking
+        if (rc == ESP_ERR_WIFI_STATE)
+        {
+            // Already reconnecting – leave _reconnPend true
+            // and keep the 1-minute wall timer running.
+        }
+    }
+    else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP)
+    {
+        DBG("EVENT GOT_IP  reconnect OK"); 
+        _reconnPend = false;
+        _giveUp     = false;
+        _lastFailMs = 0;
+    }
+}
 
 // Begin
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -32,13 +90,11 @@ void NetManager::begin(const char* ssid,
     // 1. Connect to Wi-Fi
     WiFi.mode(WIFI_MODE_STA);
     WiFi.begin(ssid, pass);
-    while (WiFi.status() != WL_CONNECTED)
-        delay(250);
 
-    // 2. Remember ports & peer IP so send() can use them later
-    _localPortCtrl = localPortCtrl;
+    // 2. Remember ports & peer IP
+    _localPortCtrl  = localPortCtrl;
     _remotePortData = remotePortData;
-    _remoteIP.fromString(ip);            // constant from defines.h
+    _remoteIP.fromString(ip);
 
     // 3. Outbound socket
     _udp.begin(0);
@@ -47,8 +103,12 @@ void NetManager::begin(const char* ssid,
     _asyncRx.listen(localPortCtrl);
     _asyncRx.onPacket([this](AsyncUDPPacket& pkt) { handleRxPacket(pkt); });
 
-    _state      = LinkState::IDLE;
-    _lastRxMs   = millis();
+    // 5. Link-state callback – event-driven watchdog
+    s_netMgr = this;                     // expose this instance
+    WiFi.onEvent(wifiEventCb);           // register static handler
+
+    _state    = LinkState::IDLE;
+    _lastRxMs = millis();
 }
 
 // Send
@@ -69,6 +129,15 @@ void NetManager::sendData(const void* data, size_t len)
     _udp.beginPacket(_remoteIP, _remotePortData); // use data port
     _udp.write(static_cast<const uint8_t*>(data), len);
     _udp.endPacket();
+    DBG("sendData: %u B", (unsigned)len);   
+
+    if (_udp.getWriteError())
+    {
+        DBG("sendData: UDP WRITE-ERR"); 
+        // _udp.flush();          // toss the half-sent packet
+        // _udp.stop();           // close socket
+        // _udp.begin(0);         // reopen right away
+    }
 }
 
 // NetManager::update()
@@ -79,12 +148,14 @@ void NetManager::sendData(const void* data, size_t len)
 void NetManager::update(void)
 {
     const uint32_t now = millis();
+    static LinkState prevState = _state;  
 
     // --------------------------------------------------------------------
-    // 1. STREAMING watchdog – drop to IDLE if no packets for 30 s
+    // 1. STREAMING watchdog – drop to IDLE if no packets for 10 s
     // --------------------------------------------------------------------
     if (_state == LinkState::STREAMING && (now - _lastRxMs) > _timeoutMs)
     {
+        DBG("WATCHDOG: no data %lu ms – drop to IDLE", now - _lastRxMs); 
         _state = LinkState::IDLE;
         _udp.flush();                   // abort any half-sent datagram
         xQueueReset(cmdQue);            // wipe pending commands
@@ -100,9 +171,17 @@ void NetManager::update(void)
     // --------------------------------------------------------------------
     if (_peerFound && (now - _lastRxMs) > _timeoutMs)
     {
+        DBG("SILENCE: peer lost – restart beacon");
         _peerFound    = false;          // forget the peer
         _lastBeaconMs = 0;              // beacon immediately
         xQueueReset(cmdQue);            // clear stale commands
+    }
+
+    // 2.1. Wi-Fi reconnect watchdog – fail-safe if >1 min
+    if (_reconnPend && (now - _lastFailMs) > WIFI_RECONNECT_GIVEUP_MS)
+    {
+        DBG("FAILSAFE TIMER: reconnect >1 min"); 
+        failSafe();
     }
 
     // --------------------------------------------------------------------
@@ -110,12 +189,31 @@ void NetManager::update(void)
     // --------------------------------------------------------------------
     if (!_peerFound && (now - _lastBeaconMs) >= WIFI_BEACON_PERIOD)
     {
+        DBG("BEACON TX"); 
         const uint8_t beacon = 0x0A;
         _udp.beginPacket(_remoteIP, _localPortCtrl);
         _udp.write(&beacon, 1);
         _udp.endPacket();
         _lastBeaconMs = now;
     }
+
+    if (_state == LinkState::STREAMING)
+    {
+        _dbgActive = true;
+    }
+    else
+    {
+        _dbgActive = false;
+    }
+
+    if (prevState != _state)                                   // <<< ADD BLOCK
+    {
+        DBG("STATE %u→%u  peer=%d rxΔ=%lu",
+            (unsigned)prevState, (unsigned)_state,
+            (int)_peerFound, millis() - _lastRxMs);
+        prevState = _state;
+    }
+    debugGate(now);                      // prints only when _dbgActive
 }
 
 // Drive LED – one call per loop()
@@ -123,17 +221,21 @@ void NetManager::update(void)
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::driveLed(Blinker &led) noexcept
 {
-    // Reconfigure the burst pattern only when the mode changes
     static LedMode last = LedMode::DISC;
-    const LedMode now   = ledMode();
-    if (now == last) return;
+    LedMode now;
+
+    // LOST overrides normal modes
+    now = _giveUp ? LedMode::LOST : ledMode();
+
+    if (now == last) return;          // re-configure only on change
     last = now;
 
     switch (now)
     {
-        case LedMode::DISC:  led.burst(3, 100, 5000); break;   // 3 × 100 ms every 5 s
-        case LedMode::IDLE:  led.burst(2, 100, 5000); break;   // 2 × 100 ms every 5 s
-        case LedMode::STRM:  led.burst(1, 100, 5000); break;   // 1 × 100 ms every 5 s
+        case LedMode::DISC: led.burst(3, 100, 5000); break; // 3 × 0.1 s
+        case LedMode::IDLE: led.burst(2, 100, 5000); break; // 2 × 0.1 s
+        case LedMode::STRM: led.burst(1, 100, 5000); break; // 1 × 0.1 s
+        case LedMode::LOST: led.burst(5, 250, 5000); break; // 5 × 0.25 s
     }
 }
 
@@ -142,9 +244,11 @@ void NetManager::driveLed(Blinker &led) noexcept
 // (lower priority than ADC), so it must finish quickly and never block.
 void NetManager::handleRxPacket(AsyncUDPPacket& packet)
 {
+    DBG("RX pkt len=%u", (unsigned)packet.length());
     // 0. Ignore our own 1-byte discovery beacon (0x0A)
     if (packet.length() == 1 && *((uint8_t*)packet.data()) == 0x0A)
     {
+        DBG("RX ignore: beacon echo"); 
         return; // never queue a beacon
     }
 
@@ -162,6 +266,7 @@ void NetManager::handleRxPacket(AsyncUDPPacket& packet)
     // 2. Over-sized packet?  Drop immediately (protection against floods).
     if (packet.length() > CMD_BUFFER_SIZE - 1)
     {
+        DBG("RX oversize: %u B dropped", (unsigned)packet.length());
         return;
     }
 
@@ -173,13 +278,80 @@ void NetManager::handleRxPacket(AsyncUDPPacket& packet)
 
     // Try to enqueue; if the queue is full we drop this packet.
     xQueueSend(cmdQue, rxBuf, 0);
+    DBG("RX cmd queued");
 
     // 4. Any *valid* packet keeps the watchdog alive.
     _lastRxMs  = millis();
     _peerFound = true;
 }
 
+void NetManager::failSafe(void)
+{
+    DBG("FAILSAFE: giving up, radio off");
+    stopStream();                        // drop to DISCONNECTED
+    WiFi.disconnect(true, true);         // radio off, erase PMK
+    _udp.flush();
+
+    _giveUp     = true;                  // LED shows LOST state
+    _reconnPend = false;
+    _peerFound  = false;
+    _state      = LinkState::DISCONNECTED;
+    _lastBeaconMs = 0;
+
+    xQueueReset(cmdQue);                 // clear command queue
+}
+
 void NetManager::setTargetIP(const String& ipStr)
 {
     _remoteIP.fromString(ipStr);
+}
+
+void NetManager::debugPrint(void)
+{
+#if SERIAL_DEBUG
+    static uint32_t seq = 0;
+
+    Serial.print(F("=== NetManager === "));
+    Serial.print(seq++);
+    Serial.print(F("\n state        : "));
+    Serial.println(static_cast<uint8_t>(_state));
+
+    Serial.print(F(" peerFound    : "));
+    Serial.println(_peerFound);
+
+    Serial.print(F(" reconnPend   : "));
+    Serial.println(_reconnPend);
+
+    Serial.print(F(" giveUp       : "));
+    Serial.println(_giveUp);
+
+    Serial.print(F(" lastFailMs   : "));
+    Serial.println(_lastFailMs);
+
+    Serial.print(F(" lastRxMs     : "));
+    Serial.println(_lastRxMs);
+
+    Serial.print(F(" lastBeaconMs : "));
+    Serial.println(_lastBeaconMs);
+
+    Serial.print(" rxΔ=");
+    Serial.println(millis() - _lastRxMs);
+
+    Serial.print(F(" ===\n"));
+#endif
+}
+
+inline void NetManager::debugGate(uint32_t now)
+{
+#if SERIAL_DEBUG
+    if (_dbgActive)
+    {
+        static uint32_t dbgT = 0;
+        if (now - dbgT > 50)            // 2 Hz print cadence
+        {
+            debugPrint();
+            dbgT = now;
+        }
+    }
+#endif
 }
