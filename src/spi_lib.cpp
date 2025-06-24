@@ -17,16 +17,10 @@
 static SPIClass *   g_spi  = nullptr;                     // shared SPI handle
 static portMUX_TYPE spiMux = portMUX_INITIALIZER_UNLOCKED;
 
-// Bit-mask for driving both ADS1299 chip-select lines at once.
-//
-// - Each CS line occupies one GPIO bit in the ESP32 GPIO_OUT register.
-// - Building the mask at compile time lets us toggle both pins
-//   simultaneously with a single WRITE_PERI_REG() instead of two
-//   back-to-back digitalWrite() calls.
-//
-// Result: perfectly synchronous edges on the master & slave devices and
-// about 2 µs less CS-switching latency.
-static constexpr uint32_t CS_MASK_BOTH = (1UL << PIN_CS_MASTER) | (1UL << PIN_CS_SLAVE);
+// Bit-mask for driving chip-select lines at once using registers (faster, both CS can be controlled at the same time, perfect in sync)
+static constexpr uint32_t CS_MASK_BOTH   = (1UL << PIN_CS_MASTER) | (1UL << PIN_CS_SLAVE);
+static constexpr uint32_t CS_MASK_MASTER = (1UL << PIN_CS_MASTER);
+static constexpr uint32_t CS_MASK_SLAVE  = (1UL << PIN_CS_SLAVE );
 
 // Delay inserted after CS goes LOW or before it returns HIGH.
 // Datasheet requires ≥4 SPI clocks; 2 µs meets that at 2 MHz and still
@@ -36,18 +30,13 @@ static constexpr uint32_t CS_DELAY_US = 2; // us time delay
 
 
 
-// Helpers
+// Helpers – chip-select control via direct GPIO writes
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-// These two tiny wrappers drive both CS pins at once via the
-// “write-one-to-set / write-one-to-clear” registers.
-//
-// WHY NOT digitalWrite()?
-// -----------------------
-// - digitalWrite() pokes one pin per call and goes through Arduino
-//   overhead (~1.2 µs on ESP32-C3).
-// - WRITE_PERI_REG() toggles both pins in <40 ns on the same clock
-//   edge, keeping master/slave perfectly aligned.
+// CS helpers use WRITE_PERI_REG to toggle GPIOs directly,
+// avoiding Arduino’s slow digitalWrite() (~1.2 µs on ESP32-C3).
+// This provides ~40 ns edges and perfectly synchronous timing
+// for pulling both CS up or down
 //
 // Synchronous CS edges guarantee that master & slave ADS1299 active
 // windows are aligned and I do not waste time toggling one CS and then
@@ -56,9 +45,17 @@ static inline void cs_both_high()
 {
     WRITE_PERI_REG(GPIO_OUT_W1TS_REG, CS_MASK_BOTH);
 }
-static inline void cs_both_low ()
+static inline void cs_both_low()
 {
     WRITE_PERI_REG(GPIO_OUT_W1TC_REG, CS_MASK_BOTH);
+}
+static inline void cs_master_low()
+{
+    WRITE_PERI_REG(GPIO_OUT_W1TC_REG, CS_MASK_MASTER);
+}
+static inline void cs_slave_low()
+{
+    WRITE_PERI_REG(GPIO_OUT_W1TC_REG, CS_MASK_SLAVE);
 }
 
 
@@ -100,7 +97,7 @@ void spiTransaction_OFF()
 
 
 
-// SPI TIME CRITICAL write/read, but controlling chips selects so we can talk to devices separately or to all at ones
+// SPI TIME CRITICAL write/read with manual CS control – supports separate or simultaneous access to master/slave ADCs
 // DMA burst with CS control
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -121,20 +118,20 @@ void IRAM_ATTR xfer(char            target,
     portENTER_CRITICAL(&spiMux);
 
     // Deselect both pins before transfer to be sure both are switched off
-    cs_both_high(); // WRITE_PERI_REG used here to get simultanious toggle
+    cs_both_high(); // again, WRITE_PERI_REG instead of digitalWire, faster better, perfectly in sync
 
     // Set chip select pins based on target
     switch (target)
     {
-        case 'M': digitalWrite(PIN_CS_MASTER, LOW); break; // Master only
-        case 'S': digitalWrite(PIN_CS_SLAVE , LOW); break; // Slave only
-        case 'B': cs_both_low();                    break; // Both - WRITE_PERI_REG used here to get simultanious toggle
-        case 'T': /* test pulse – no CS change */   break; // Test - can be use in the future to see clock as a time marks on oscilloscope
-        default : portEXIT_CRITICAL(&spiMux);      return; // If non of those - stop time critical mode and exit the entire function
+        case 'M': cs_master_low(); break; // Master only
+        case 'S': cs_slave_low();  break; // Slave only
+        case 'B': cs_both_low();   break; // Both
+        case 'T':                  break; // Test mode – reserved for sending visible SPI clock pulses to the scope
+        default : portEXIT_CRITICAL(&spiMux); return; // If non of those - stop time critical mode and exit the entire function
     }
 
     // 2 us time delay before writing / reading
-    // In datasheet i think there is something about at least 4 clocks before you pull chip select low (activate) so lets have
+    // In datasheet i think there is something about at least 4 clocks after you pull chip select low (activate) so lets have
     // at least 2 us which will be more than exactat 2 MHz and more than enough for anything which is faster than that
     //          esp_rom_delay_us is a ROM routine used by Espressif themselves (ets_delay_us alias).
     //          It waits by counting APB cycles, auto-scales with CPU clock – no
@@ -151,7 +148,7 @@ void IRAM_ATTR xfer(char            target,
                          rxData,                       // RX
                          length);                      // counter of bytes
 
-    // Same reason for delay as before for chip select going up
+    // Delay after CS goes HIGH – same reason: ensure full SPI timing cycle which ADS1299 wants
     esp_rom_delay_us(CS_DELAY_US); // must be ≥ 4 clocks
 
     // Deselect both pins after transfer
