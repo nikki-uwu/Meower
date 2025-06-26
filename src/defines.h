@@ -7,7 +7,7 @@
 #define SPI_NORMAL_OPERATION_CLOCK 16000000 // Hz, 8 MHz at the moment is the highest stable clock i was able to get
 
 #define PIN_LED       20 // physical pin 30, GPIO20, U0RXD
-#define LED_ON_MS     100  // LED HIGH for 100 ms
+#define LED_ON_MS     250  // LED HIGH for 250 ms
 #define LED_PERIOD_MS 5000 // repeat every 5000 ms
 
 #define PIN_BAT_SENSE   4 // physical pin 18, GPIO4, ADC1_CH4

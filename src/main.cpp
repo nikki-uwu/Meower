@@ -23,7 +23,7 @@ SPIClass spi(SPI);                 // Use the default SPI instance on the ESP32-
 
 // Classes
 Battery_Sense BatterySense(PIN_BAT_SENSE, BAT_SCALE, BAT_SAMPLING_MS); // defaults: GPIO-4, scaling 0.00428, 1000 ms (1 s) between battery sampling
-Blinker       LEDheartBeat(PIN_LED      , LED_ON_MS, LED_PERIOD_MS  ); // GPIO-20, 100 ms ON, 5000 ms period
+Blinker       LEDheartBeat(PIN_LED      , LED_PERIOD_MS  ); // GPIO-20, 250 ms ON (chech defines), 5000 ms period
 BootCheck     bootCheck;
 DebugLogger   Debug(Serial, SERIAL_BAUD);   // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
 SerialCli     CLI(Serial, SERIAL_BAUD);     // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
@@ -35,7 +35,7 @@ QueueHandle_t        cmdQue        = nullptr;
 static MsgContext    msgCtx;
 
 // continuous reading mode state and maximum time we will wait before reseting mode if anything happened and ADC give no data back
-static volatile bool continuousReading = false;
+volatile bool continuousReading = false;
 
 // Timmer counter for main loop, so we can control how often it's executed. Default is 1 time per 50 ms
 static uint32_t previousTime = 0; // timer for main loop
@@ -98,158 +98,6 @@ volatile bool g_filtersEnabled = true;
 // Helpers
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-// Perform a full reset of the ADS1299 chip
-//
-// CHECK SEQUENCE IN DATASHEET, p.62, Figure 67. Initial Flow at Power-Up
-//
-// This function ensures a complete reset regardless of the previous pin states.
-// ADCs will be reset to default state with sync between them, internal ref ON, 0 gain, 500 FPS and no bias.
-// Sequence:
-// - Set continuous mode flag to False, because we are performing full reset
-// - Reset SPI clock to 2 MHz. We will reset chip only at 2 MHz clock, because it works unstable if we forse it to work at 8 right away. So we full reset first with low speed and only then push 4 Mhz or higher
-// - Setting digital pins to low as it was asked in datasheet before reset
-// - Setting PWDN and RESET low and then high to power up the chip (and keep it high, as requested).
-// - Waiting for the power-up stabilization time.
-// - RESET pulse low->high to reset the digital logic.
-// - Waiting for the chip to initialize fully.
-// - Get digital levels back to CS off and START off
-// - Stop Continuous mode sending SDATAC message
-// - Configure master to have reference signal inside on Config_3 to 0xE0
-// - Configure master to send reference clock to slave and then slave to listen to it Config_1
-// - Now slave should be fully on and we can configure internal reference Config_3 t0 0xE0 for both master and slave AGAIN and slave will behave as master
-// - Setup testing signals to be generated internaly, to have 3.75 mV amplitude and period of 1 second
-// - Setup all channels to be shorted to testing signal, with 0 gain, no SRB for any of them
-void ads1299_full_reset()
-{
-    // We will use digitalWrite instead of WRITE_PERI_REG here since timings are not important.
-
-    // Make sure continuous Mode is OFF, because we are doing full reset
-    // ALSO, we do not care about proper procidure with messages, since we are pulling RESET and POWER DOWN pins LOW,
-    // fully reseting ADCs. so we can just set continuous mode to false
-    continuousReading = false; 
-
-    // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
-    spiTransaction_OFF();               // stop SPI
-    spiTransaction_ON(SPI_RESET_CLOCK); // start at 2 MHz
-
-    // Based on datasheet all CS and START (it says all digital signals) should go LOW
-    // Page 62, check diagramm
-    digitalWrite(PIN_CS_MASTER, LOW);
-    digitalWrite(PIN_CS_SLAVE , LOW);
-    digitalWrite(PIN_START    , LOW);
-
-    // Set PWDN and RESET low to fully stop ADCs
-    digitalWrite(PIN_PWDN , LOW);
-    digitalWrite(PIN_RESET, LOW);
-
-    // Wait 150 ms for power-down stabilization
-    delay(150); 
-
-    // Set PWDN and RESET high to ensure the chip is powered up and remains so
-    digitalWrite(PIN_PWDN , HIGH);
-    digitalWrite(PIN_RESET, HIGH);
-
-    // Wait 150 ms for power-up stabilization (datasheet says 2^18 of clocks which is around 132 ms, page 70, 11.1 Power-Up Sequencing)
-    delay(150);
-
-    // Transmit RESET pulse with length exceeding the minimum 2 clock cycles (page 70, 11.1 Power-Up Sequencing)
-    digitalWrite(PIN_RESET, LOW);
-    delayMicroseconds(10); // 10 us
-    digitalWrite(PIN_RESET, HIGH);
-
-    // Wait 1 ms exceeding the minimum 18 clock cycles (page 70, 11.1 Power-Up Sequencing)
-    delay(1);
-
-    // Pull CS back, but keep START LOW
-    digitalWrite(PIN_CS_MASTER, HIGH);
-    digitalWrite(PIN_CS_SLAVE , HIGH);
-    digitalWrite(PIN_START    , LOW ); // this one is already LOW, but lets make it safe
-
-    // Stop continuous data mode (SDATAC)
-    // Datasheet - 9.5.3 SPI command definitions, p.40.
-    {
-        uint8_t SDATAC_mes = 0x11;
-        uint8_t rx_mes     = 0; // just empty message, we do need any response here
-        xfer('B', 1u, &SDATAC_mes, &rx_mes);
-    }
-
-    // We are using internal reference buffer so we have to set it right away becase by default
-    // config is 0x60 abd it means turn off internal reference buffer
-    // Configuration 3 - Reference and bias
-    // bit 7                | 6        | 5        | 4         | 3                | 2                  | 1                      | 0 read only
-    // use Power ref buffer | Always 1 | Always 1 | BIAS meas | BIAS ref ext/int | BIAS power Down/UP | BIAS sence lead OFF/ON | LEAD OFF status
-    //              76543210
-    //              X11YZMKR
-    // Config_3 = 0b11100000; 0xE0
-    {
-        uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xE0};
-        uint8_t rx_mes[3u]        = {0}; // just empty message, we do need any response here
-        xfer('B', 3u, Master_conf_3, rx_mes);
-    }
-
-    // Then we need to setup up clock for slave and update reference signal again, otherwise
-    // slave is in different state comparing to master
-    // Configuration 1 - Daisy-chain, reference clock, sample rate
-    // bit 7        | 6                  | 5                 | 4        | 3        | 2   | 1   | 0
-    // use Always 1 | Daisy-chain enable | Clock output mode | always 1 | always 0 | DR2 | DR1 | DR0
-    //                   76543210
-    //                   1XY10ZZZ
-    // Master_conf_1 = 0b10110101; # Daisy ON, Clock OUT ON,  500 SPS - i moved it to 500 Hz to get better frequency response in range [0 - 100 Hz]. The reason is sigma delta adc 
-    // Slave_conf_1  = 0b10010101; # Daisy ON, Clock OUT OFF, 500 SPS
-    {
-        // Master config
-        uint8_t Master_conf_1[3u] = {0x41, 0x00, 0xB6};
-        uint8_t rx_mes[3u]        = {0}; // just empty message, we do need any response here
-        xfer('M', 3u, Master_conf_1, rx_mes);
-
-        // Slave config
-        uint8_t Slave_conf_1[3u] = {0x41, 0x00, 0x96};
-        xfer('S', 3u, Slave_conf_1, rx_mes);
-
-        // Set reference signal to base again, since slave was in what ever state so
-        // after this config 3 messages they will be in similar modes again
-        uint8_t Config_3[3u] = {0x43, 0x00, 0xE0};
-        xfer('B', 3u, Config_3, rx_mes);
-    }
-
-    // Next I want to preset testing signals parameters - FOR BOTH ADCs
-    // Test signal are generated internaly
-    // Test signal amplitude 3.75 mV (2 × -(VREFP - VREFN) / 2400, Vwhere on this board VREFP is +4.5V and VREFN is 0 V)
-    // Period of miander is 1 second
-    // bit 7        | 6        | 5        | 4                   | 3        | 2                  | 1           0
-    // use Always 1 | Always 1 | Always 0 | Test source ext/int | Always 0 | Test sig amplitude | Test sig freq
-    //              76543210
-    //              110X0YZZ
-    //              11010101 Signal is gen internally, amplitude twice more than usual, pulses with 1 s period
-    // Config_2 = 0b11010100
-    {
-        uint8_t Config_2[3u] = {0x42, 0x00, 0xD4};
-        uint8_t rx_mes[3u]   = {0}; // just empty message, we do need any response here
-        xfer('B', 3u, Config_2, rx_mes);
-    }
-
-    // Set all channels to normal mode (both positive and negative are needed for each channel) with 0 gain
-    // Channels settings
-    // bit 7                 | 6 5 4 | 3                | 2 1 0
-    // use Power down On/Off | GAIN  | SRB2 open/closed | Channel input
-    //                  76543210
-    // Channel_conf = 0b00000101
-    // We have 8 channels in each ADC and we assign default settings to all of them in pairs
-    for (uint8_t ind = 0; ind < 8u; ind++)
-    {
-        uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x05 };
-        uint8_t rx_mes[3u]          = {0}; // just empty message, we do need any response here
-        xfer('B', 3u, Config_Channels, rx_mes);
-
-        // wait for 1 ms
-        delay(1);
-    }
-
-    // Reconfigure SPI frequency to working one
-    spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 8 MHz)
-}
-
 // Setting start signal for contious mode. Ether ON or OFF
 void continious_mode_start_stop(uint8_t on_off)
 {
@@ -651,9 +499,7 @@ void setup()
     pinMode(PIN_LED, OUTPUT);          // make it an output
     digitalWrite(PIN_LED, LOW);        // start OFF
 
-    WiFi.mode(WIFI_MODE_STA);          // station-only; turns off the soft-AP
     WiFi.setSleep(true);               // let the modem nap between DTIM beacons
-    
 
     wifi_config_t cfg;
     esp_wifi_get_config(WIFI_IF_STA, &cfg);

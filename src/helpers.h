@@ -8,7 +8,24 @@
 #include <stdlib.h>
 #include <WiFi.h>           // <-- used by BootCheck::ESP_REST()
 #include <serial_io.h>
+#include <spi_lib.h>
 
+
+
+
+// Global variables
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+extern volatile bool continuousReading; 
+
+
+
+
+// Declarations in .cpp
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Full ADS1299 reset
+void ads1299_full_reset();
 
 
 
@@ -80,17 +97,17 @@ class Battery_Sense
             _last_val += _alpha * (volts - _last_val);     // single-pole IIR (cheap!)
         }
 
-        /* ---------- accessors (all read-only & ~20 ns each) ------------------ */
+        // accessors (all read-only & ~20 ns each)
         inline value_t  getVoltage() const noexcept { return _last_val; }
         inline uint32_t age()        const noexcept { return millis() - _last_ms; }
         inline bool     isFresh(uint32_t maxAgeMs = 2 * 1000UL) const noexcept
         { return age() < maxAgeMs; }
 
-        /* ---------- optional helpers ---------------------------------------- */
+        // optional helpers
         inline uint32_t nextSampleIn() const noexcept
         { return (_sample_ms > age()) ? (_sample_ms - age()) : 0; }
 
-        /* ---------- runtime tunables ---------------------------------------- */
+        // runtime tunables
         inline void setFilter(float alpha) noexcept
         { _alpha = constrain(alpha, 0.0f, 1.0f); }
 
@@ -118,16 +135,13 @@ class Blinker
     public:
         /**
          *  @param pin         - LED GPIO
-         *  @param on_ms       - time LED stays *lit* each cycle
          *  @param period_ms   - full cycle length
          *  @param activeLow   - true = LED wired to Vcc through resistor (usual on dev-boards)
          */
         Blinker(uint8_t  pin,
-                uint32_t on_ms       = 100,
                 uint32_t period_ms   = 2000,
                 bool     activeLow   = true)
             : _pin(pin),
-            _on_ms(on_ms),
             _period_ms(period_ms),
             _activeLow(activeLow)
         {
@@ -152,10 +166,9 @@ class Blinker
             }
         }
 
-        /// runtime control 
-        inline void setTiming(uint32_t on_ms, uint32_t period_ms) noexcept
+        // runtime control 
+        inline void setTiming(uint32_t period_ms) noexcept
         {
-            _on_ms     = on_ms;
             _period_ms = period_ms;
         }
 
@@ -178,11 +191,10 @@ class Blinker
         }
 
     private:
-        inline uint8_t _activeLevel () const noexcept { return _activeLow ? LOW  : HIGH; }
-        inline uint8_t _inactiveLevel() const noexcept { return _activeLow ? HIGH : LOW; }
+        inline uint8_t _activeLevel()   const noexcept { return _activeLow ? LOW  : HIGH; }
+        inline uint8_t _inactiveLevel() const noexcept { return _activeLow ? HIGH : LOW;  }
 
         const uint8_t _pin;
-        uint32_t      _on_ms;
         uint32_t      _period_ms;
         bool          _activeLow;
         bool          _enabled    {true};
@@ -238,13 +250,8 @@ public:
     }
 
 private:
-    static constexpr uint32_t FAST_WINDOW_MS = 5000; // 3 s
+    static constexpr uint32_t FAST_WINDOW_MS = 5000; // 5 s
     Preferences prefs;
 };
-
-
-
-
-
 
 #endif // HELPERS_H

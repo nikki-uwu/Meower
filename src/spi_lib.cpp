@@ -82,7 +82,6 @@ void spiTransaction_ON(uint32_t spi_frequency)
         g_spi->beginTransaction(SPISettings(spi_frequency, MSBFIRST, SPI_MODE1));
     }
 }
-
 void spiTransaction_OFF()
 {
     if (g_spi)

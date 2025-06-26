@@ -18,6 +18,7 @@ extern QueueHandle_t cmdQue;
 static NetManager* s_netMgr = nullptr;   // set once in NetManager::begin()
 
 
+constexpr uint8_t Beacon = 0x0A;
 
 
 // Thread/Task safe time delta.
@@ -115,7 +116,7 @@ void NetManager::begin(const char* ssid,
                        uint16_t    remotePortData)
 {
     // 1. Connect to Wi-Fi
-    WiFi.mode(WIFI_MODE_STA);
+    WiFi.mode(WIFI_MODE_STA); // station-only; turns off the soft-AP
     WiFi.begin(ssid, pass);
 
     // 2. Remember ports & peer IP
@@ -181,7 +182,7 @@ void NetManager::sendData(const void* data, size_t len)
 // ---------------------------------------------------------------------------------------------------------------------------------
 void NetManager::update(void)
 {
-    const uint32_t now = millis();
+    const uint32_t   now = millis();
     static LinkState prevState = _state;  
 
     // 1. STREAMING watchdog - drop to IDLE if we have not heard from the PC
@@ -231,10 +232,9 @@ void NetManager::update(void)
     // 3. Discovery beacon - 1 s cadence until a packet is heard again
     if (!_peerFound && (safeTimeDelta(now, _lastBeaconMs) >= WIFI_BEACON_PERIOD))
     {
-        DBG("BEACON TX"); 
-        static const uint8_t beacon = 0x0A;
+        DBG("BEACON TX");
         _udp.beginPacket(_remoteIP, _localPortCtrl);
-        _udp.write(&beacon, 1);
+        _udp.write(&Beacon, 1);
         _udp.endPacket();
         _lastBeaconMs = now;
     }
@@ -243,7 +243,7 @@ void NetManager::update(void)
 
     if (prevState != _state)                                   // <<< ADD BLOCK
     {
-        DBG("STATE %u→%u  peer=%d rxΔ=%lu",
+        DBG("STATE %u->%u  peer=%d rxΔ=%lu",
             (unsigned)prevState, (unsigned)_state,
             (int)_peerFound, safeTimeDelta(now, _lastRxMs));
         prevState = _state;
@@ -265,10 +265,10 @@ void NetManager::driveLed(Blinker &led) noexcept
 
     switch (now)
     {
-        case LedMode::DISC: led.burst(3, 100, 5000); break; // 3 × 0.1 s
-        case LedMode::IDLE: led.burst(2, 100, 5000); break; // 2 × 0.1 s
-        case LedMode::STRM: led.burst(1, 100, 5000); break; // 1 × 0.1 s
-        case LedMode::LOST: led.burst(5, 250, 5000); break; // 5 × 0.25 s
+        case LedMode::DISC: led.burst(3, LED_ON_MS, 5000); break; // 3 × 0.25 s
+        case LedMode::IDLE: led.burst(2, LED_ON_MS, 5000); break; // 2 × 0.25 s
+        case LedMode::STRM: led.burst(1, LED_ON_MS, 5000); break; // 1 × 0.25 s
+        case LedMode::LOST: led.burst(5, LED_ON_MS, 5000); break; // 5 × 0.25 s
     }
 }
 
