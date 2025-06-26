@@ -80,7 +80,12 @@ void SerialCli::update()
         }
         else if (_rxPos < (sizeof(_rx) - 1U))
         {
-            _rx[_rxPos++] = c;
+            _rx[_rxPos++] = c;               // normal accumulation
+        }
+        else
+        {
+            // input longer than 127 B – discard until newline to resync
+            while (_ser.available() && _ser.read() != '\n') {}
         }
     }
 }
@@ -241,7 +246,7 @@ void SerialCli::_cmdApplyConfig()
         _ser.println("WARN: pass is empty");
     }
 
-    _ser.println("Saving to NVS …");
+    _ser.println("Saving to NVS ...");
 
     Preferences p;
     p.begin("netconf", false);
