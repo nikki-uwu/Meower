@@ -18,20 +18,7 @@ extern QueueHandle_t cmdQue;
 static NetManager* s_netMgr = nullptr;   // set once in NetManager::begin()
 
 
-constexpr uint8_t Beacon = 0x0A;
-
-
-// Thread/Task safe time delta.
-// Why? Because if we do now = millis(), delta = (now - previous timestamp) and right between this call
-// function got interrupt and updated timestamp - we have now which is less than previous timestamp.
-// I've got this problem when i was checking beacon from PC and when i got current time just before
-// i called if with (now - previous) wifi stack was sending interupt with new beacon from PC. So,
-// beacon was there, previous timestemp was updated and when i do if((mow - previous) > limit) inside if
-// we have overflowed uint and board stops streaming mode
-static inline uint32_t safeTimeDelta(uint32_t now, uint32_t then)
-{
-    return (now >= then) ? (now - then) : 0;
-}
+constexpr uint8_t boardDiscoveryBeacon = 0x0A;
 
 
 
@@ -234,7 +221,7 @@ void NetManager::update(void)
     {
         DBG("BEACON TX");
         _udp.beginPacket(_remoteIP, _localPortCtrl);
-        _udp.write(&Beacon, 1);
+        _udp.write(&boardDiscoveryBeacon, 1);
         _udp.endPacket();
         _lastBeaconMs = now;
     }
