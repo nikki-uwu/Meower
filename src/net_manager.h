@@ -84,14 +84,14 @@ private:
     uint16_t  _localPortCtrl;  // port we listen for commands on (was _localPort)
     uint16_t  _remotePortData; // port we send fast data to
 
-    uint32_t  _lastBeaconMs = 0;    // last discovery beacon
-    uint32_t  _lastRxMs     = 0;    // last *valid* packet or keep-alive
-    bool      _peerFound    = false;
+    volatile uint32_t _lastBeaconMs = 0;    // last discovery beacon
+    volatile uint32_t _lastRxMs     = 0;    // last *valid* packet or keep-alive
 
-    LinkState _state     { LinkState::DISCONNECTED };
     uint32_t  _timeoutMs { WIFI_SERVER_TIMEOUT };      // 10 s of silence from server => stop streaming
 
+    volatile LinkState _state       { LinkState::DISCONNECTED };
     volatile uint32_t  _lastFailMs  = 0;     // first millis() when Wi-Fi dropped
+    volatile bool      _peerFound   = false;
     volatile bool      _reconnPend  = false; // reconnect attempt in progress
     volatile bool      _giveUp      = false; // set by failSafe()
 
