@@ -179,7 +179,9 @@ static inline void adcEqualizer_16ch_7tap(int32_t * data_inout  , // [16]: in-pl
         acc += (int64_t)FIR_PTR[5] * fir_hist[ch][row_idx[5]];
         acc += (int64_t)FIR_PTR[6] * fir_hist[ch][row_idx[6]];
 
-        // Scale back after multiplication with coefficients and store
+        // Scale back after multiplication with coefficients and store WITH proper rounding away from 0 (-0.5 = -1, +0.5 = +1)
+        const int64_t sign = acc >> 63;
+        acc += (1LL << (FIR_SHIFT - 1)) - (sign & 1);
         data_inout[ch] = (int32_t)(acc >>= FIR_SHIFT);
     }
 
@@ -295,11 +297,13 @@ static inline void dcBlockerIIR_16ch_2p(int32_t *      data_inout        , // [1
                       (int64_t)coef_A[select_idx][0] * y1_q[ch] -
                       (int64_t)coef_A[select_idx][1] * y2_q[ch];
 
-        // scale back after multiplication
+        // scale back after multiplication WITH proper rounding away from 0 (-0.5 = -1, +0.5 = +1)
         // It's ok to scale only by coeffcicients scale if you know that maximum
         // filter gain is 0 dB. Otherwise signal can be bigger then it was before.
         // That is why you ether normalize filter gain to 0dB before putting coefficients here
         // or you keep in mind gain and make sure you will not overflow after
+        const int64_t sign = acc >> 63;
+        acc  += (1LL << (BIT_SHIFT_OUT - 1)) - (sign & 1);
         acc >>= BIT_SHIFT_OUT;
         int32_t y_q = (int32_t)acc;
 
@@ -399,11 +403,13 @@ static inline void notch5060Hz_16ch_4p(int32_t *      data_inout        ,
                           (int64_t)BQ_A[select_idx][0] * y1 -
                           (int64_t)BQ_A[select_idx][1] * y2;
 
-            // scale back after multiplication
+            // scale back after multiplication WITH proper rounding away from 0 (-0.5 = -1, +0.5 = +1)
             // It's ok to scale only by coeffcicients scale if you know that maximum
             // filter gain is 0 dB. Otherwise signal can be bigger then it was before.
             // That is why you ether normalize filter gain to 0dB before putting coefficients here
             // or you keep in mind gain and make sure you will not overflow after
+            const int64_t sign = acc >> 63;
+            acc  += (1LL << (BIT_SHIFT_OUT[filter_OnOff][selectSamplingFreq] - 1)) - (sign & 1);
             acc >>= BIT_SHIFT_OUT[filter_OnOff][selectSamplingFreq];
             int32_t y = (int32_t)acc;
 
@@ -507,11 +513,13 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
                           (int64_t)BQ_A[select_idx][0] * y1 -
                           (int64_t)BQ_A[select_idx][1] * y2;
 
-            // scale back after multiplication
+            // scale back after multiplication WITH proper rounding away from 0 (-0.5 = -1, +0.5 = +1)
             // It's ok to scale only by coeffcicients scale if you know that maximum
             // filter gain is 0 dB. Otherwise signal can be bigger then it was before.
             // That is why you ether normalize filter gain to 0dB before putting coefficients here
             // or you keep in mind gain and make sure you will not overflow after
+            const int64_t sign = acc >> 63;
+            acc  += (1LL << (BIT_SHIFT_OUT[filter_OnOff][selectSamplingFreq] - 1)) - (sign & 1);
             acc >>= BIT_SHIFT_OUT[filter_OnOff][selectSamplingFreq];
             int32_t y = (int32_t)acc;
 
