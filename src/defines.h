@@ -22,7 +22,7 @@
 // Every frame still gets counter, so it's just several independent frames stacked together.
 // MIN ---  1 (48 bytes for parsed adc data, 4 bytes for timer and at the end of combined frames 4 bytes for battery float)
 // MAX --- 28 all frames with timestamps and battery value should be always < 1472 bytes (MTU), 52 * 28 + 4 = 1460
-#define FRAMES_PER_PACKET 10
+#define FRAMES_PER_PACKET 28
 
 // Buffer size for incoming command UDP packets (adjust based on your max command length)
 #define CMD_BUFFER_SIZE 512 // Bytes

@@ -243,7 +243,7 @@ public:
 
 
     // kept for API completeness - main.cpp no longer calls update()
-    inline void update() {}
+    void update();
 
     void ESP_REST(const char* reason = "user_reboot")
     {

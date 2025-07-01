@@ -10,20 +10,18 @@ void BootCheck::init()
         return;                                   // skip fast-boot logic
     }
 
-    // history shift
+    // shift the last three records: 2->3, 1->2, 0->1
     for (int i = 2; i >= 0; --i)
     {
-        String   timeKey = "time" + String(i);
-        String   flagKey = "flag" + String(i);
-        uint32_t t       = prefs.getUInt (timeKey.c_str(), 0);
-        String   f       = prefs.getString(flagKey.c_str(), "");
-        prefs.putUInt  (("time" + String(i + 1)).c_str(), t);
-        prefs.putString(("flag" + String(i + 1)).c_str(), f);
+        prefs.putUInt(("time" + String(i + 1)).c_str(),
+                      prefs.getUInt(("time" + String(i)).c_str(), 0));
+        prefs.putString(("flag" + String(i + 1)).c_str(),
+                        prefs.getString(("flag" + String(i)).c_str(), ""));
     }
 
-    // placeholder for this boot
-    prefs.putUInt  ("time0", FAST_WINDOW_MS + 1);
-    prefs.putString("flag0", "a");
+    // placeholder for this boot: armed but time not known yet
+    prefs.putUInt("time0", FAST_WINDOW_MS + 1);   // >window means "slow"
+    prefs.putString("flag0", "a");                // a = armed
 
     // fast-reboot test
     uint32_t t1 = prefs.getUInt("time1", FAST_WINDOW_MS + 1);
@@ -33,7 +31,8 @@ void BootCheck::init()
     String   f2 = prefs.getString("flag2", "");
     String   f3 = prefs.getString("flag3", "");
 
-    if ((t1 + t2 + t3 < FAST_WINDOW_MS) && f1 == "a" && f2 == "a" && f3 == "a")
+    if (((t1 + t2 + t3) < FAST_WINDOW_MS) &&
+        (f1 == "a") && (f2 == "a") && (f3 == "a"))
     {
         /* ----------------------------------------------------------------
             *  reset-storm detected
@@ -42,13 +41,28 @@ void BootCheck::init()
             * ---------------------------------------------------------------- */
         prefs.putString("BootMode", "AccessPoint");
         prefs.end();                      // close cleanly
-        DBG("[BOOTCHECK] reset-storm -> BootMode=AccessPoint");
+        DBG("[BOOTCHECK] reset-storm -> BootMode = AccessPoint");
         delay(100);
         ESP.restart();                    // warm reboot - never returns
     }
 
     prefs.putUInt("time0", millis());   // overwrite placeholder
     prefs.end();                        // CLOSE
+}
+
+// BootCheck::update  -- call once per loop()
+void BootCheck::update()
+{
+    static bool done = false;
+    if (done || millis() < FAST_WINDOW_MS) return;
+
+    if (prefs.begin("bootlog", false))
+    {
+        if (prefs.getString("flag0", "a") == "a")
+            prefs.putString("flag0", "b"); // disarm this boot
+        prefs.end();
+    }
+    done = true;
 }
 
 

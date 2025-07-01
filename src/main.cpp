@@ -621,6 +621,9 @@ void loop()
     // Always check for inbound control commands
     parse_and_execute_command();
 
+    // boot - if 3 seconds passed remove reset flags
+    bootCheck.update();
+
     // Check serial port for any incoming commands
     CLI.update();
 }
