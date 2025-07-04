@@ -79,7 +79,8 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
     }
     else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP)
     {
-        DBG("EVENT GOT_IP  reconnect OK"); 
+        DBG("EVENT GOT_IP  reconnect OK");
+        _localIP    = WiFi.localIP();
         _reconnPend = false;
         _giveUp     = false;
         _lastFailMs = 0;
@@ -92,9 +93,10 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
 // Begin
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-// 1. Connect to WiFi as a station.
-// 2. Open the existing WiFiUDP socket for TX.
-// 3. Start an AsyncUDP listener for RX.  This is event-driven, so the CPU
+// 1. Link callback on wifi events
+// 2. Connect to WiFi as a station.
+// 3. Open the existing WiFiUDP socket for TX.
+// 4. Start an AsyncUDP listener for RX.  This is event-driven, so the CPU
 //    sleeps until a packet arrives - there is no polling overhead.
 void NetManager::begin(const char* ssid,
                        const char* pass,
@@ -102,25 +104,27 @@ void NetManager::begin(const char* ssid,
                        uint16_t    localPortCtrl,
                        uint16_t    remotePortData)
 {
-    // 1. Connect to Wi-Fi
+    // 1. Link-state callback - event-driven watchdog
+    // Save "this" in a global hook so the plain-C Wi-Fi callback
+    // knows which NetManager object to talk to.
+    s_netMgr = this;           // expose this instance
+    WiFi.onEvent(wifiEventCb); // register static handler
+
+    // 2. Connect to Wi-Fi
     WiFi.mode(WIFI_MODE_STA); // station-only; turns off the soft-AP
     WiFi.begin(ssid, pass);
 
-    // 2. Remember ports & peer IP
+    // 3. Remember ports & peer IP
     _localPortCtrl  = localPortCtrl;
     _remotePortData = remotePortData;
     _remoteIP.fromString(ip);
 
-    // 3. Outbound socket
+    // 4. Outbound socket
     _udp.begin(0);
 
-    // 4. Inbound socket - zero-poll AsyncUDP
+    // 5. Inbound socket - zero-poll AsyncUDP
     _asyncRx.listen(localPortCtrl);
     _asyncRx.onPacket([this](AsyncUDPPacket& pkt) { handleRxPacket(pkt); });
-
-    // 5. Link-state callback - event-driven watchdog
-    s_netMgr = this;                     // expose this instance
-    WiFi.onEvent(wifiEventCb);           // register static handler
 
     _state    = LinkState::IDLE;
     _lastRxMs = millis();
@@ -338,6 +342,7 @@ void NetManager::debugPrint(void)
 
     DBG("=== NetManager === %lu", seq++);
 
+    DBG(" localIP      : %s",  _localIP.toString().c_str());
     DBG(" state        : %u" , static_cast<uint8_t>(_state));
     DBG(" peerFound    : %d" , _peerFound);
     DBG(" reconnPend   : %d" , _reconnPend);

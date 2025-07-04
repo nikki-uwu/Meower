@@ -20,7 +20,7 @@
 class NetManager
 {
 public:
-    // Call once from setup().  Blocks until STA is up and has an IP.
+    // Call once from setup().
     void begin(const char* ssid,
                const char* pass,
                const char* ip,
@@ -68,9 +68,10 @@ public:
     // Drive a Blinker instance according to the current link state
     void driveLed(Blinker &led) noexcept;
 
-    uint16_t getControlPort() const { return _localPortCtrl; }
-    uint16_t getDataPort()    const { return _remotePortData; }
-
+    uint16_t  getControlPort() const { return _localPortCtrl;      }
+    uint16_t  getDataPort()    const { return _remotePortData;     }
+    IPAddress getLocalIP()     const { return _localIP;            }
+    String    getLocalIPstr()  const { return _localIP.toString(); }
 
     void onWifiEvent(WiFiEvent_t event);   // called by global callback
 
@@ -80,9 +81,10 @@ public:
 
 private:
     WiFiUDP   _udp;
-    IPAddress _remoteIP;       // filled in begin() with fromString()
-    uint16_t  _localPortCtrl;  // port we listen for commands on (was _localPort)
-    uint16_t  _remotePortData; // port we send fast data to
+    IPAddress _remoteIP;             // filled in begin() with fromString()
+    IPAddress _localIP{INADDR_NONE}; // our own STA IP
+    uint16_t  _localPortCtrl;        // port we listen for commands on (was _localPort)
+    uint16_t  _remotePortData;       // port we send fast data to
 
     uint32_t _lastBeaconMs = 0;    // last discovery beacon
     uint32_t _lastRxMs     = 0;    // last *valid* packet or keep-alive
