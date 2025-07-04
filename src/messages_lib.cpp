@@ -18,6 +18,7 @@ static const MsgContext *C = nullptr; // set by msg_init()
 extern NetManager net;
 extern int32_t udp_read(char *buf, size_t cap);
 extern BootCheck bootCheck;
+extern Debugger Debug;
 
 
 
@@ -38,9 +39,9 @@ extern volatile bool     g_removeDC;           // DC-blocking IIR          (true
 extern volatile bool     g_block5060Hz;        // 50/60 Hz Notch           (true = ON)
 extern volatile bool     g_block100120Hz;      // 100/120 Hz Notch         (true = ON)
 extern volatile bool     g_filtersEnabled;     // Master filter enable     (true = ON)
-extern volatile uint32_t g_selectDCcutoffFreq; // 0=0.5, 1=1, 2=2, 3=4, 4=8 Hz
-extern volatile uint32_t g_selectNetworkFreq;  // 0=50Hz, 1=60Hz
-extern volatile uint32_t g_digitalGain;        // 0=1, 1=2, 2=4, 3=8 ... up to 8=256
+extern volatile uint32_t g_selectDCcutoffFreq; // 0 = 0.5, 1 = 1, 2 = 2, 3 = 4, 4 = 8 Hz
+extern volatile uint32_t g_selectNetworkFreq;  // 0 = 50Hz, 1 = 60Hz
+extern volatile uint32_t g_digitalGain;        // 0 = 1, 1 = 2, 2 = 4, 3 = 8 ... up to 8 = 256
 
 void msg_init(const MsgContext *ctx)
 {
@@ -91,7 +92,7 @@ static void cmd_START_CONT(char **)
 static void cmd_STOP_CONT(char **)
 {
     continious_mode_start_stop(LOW);
-    DBG("CMD stop_cnt - user requested stop");
+    Debug.print("CMD stop_cnt - user requested stop");
     net.stopStream();
 }
 static void cmd_SPI_SR(char **args, const char *orig)

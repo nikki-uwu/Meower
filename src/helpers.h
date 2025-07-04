@@ -7,7 +7,6 @@
 #include <defines.h>
 #include <stdlib.h>
 #include <WiFi.h>           // <-- used by BootCheck::ESP_REST()
-#include <serial_io.h>
 #include <spi_lib.h>
 
 
@@ -240,15 +239,12 @@ class BootCheck
 {
 public:
     void init();
-
-
-    // kept for API completeness - main.cpp no longer calls update()
     void update();
 
     void ESP_REST(const char* reason = "user_reboot")
     {
         // Tag the boot with a human-readable flag and perform a clean restart.
-        WiFi.mode(WIFI_MODE_NULL);     // stop radio → safe NVS write
+        WiFi.mode(WIFI_MODE_NULL);     // stop radio  safe NVS write
         delay(100);
 
         Preferences p;
@@ -265,5 +261,91 @@ private:
     static constexpr uint32_t FAST_WINDOW_MS = 5000; // 5 s
     Preferences prefs;
 };
+
+
+struct NetSettings
+{
+    String     ssid;
+    String     password;
+    IPAddress  ip;
+    uint16_t   portCtrl = UDP_PORT_CTRL;
+    uint16_t   portData = UDP_PORT_PC_DATA;
+};
+
+class NetConfig
+{
+public:
+    NetConfig();               // sets sane defaults
+    bool  load();              // NVS -> members
+    bool  save() const;        // members -> NVS
+
+    // quick access helpers
+    const NetSettings &get() const    { return s_; }
+    void set(const NetSettings &n)    { s_          = n; }
+    void setSSID(const String &v)     { s_.ssid     = v; }
+    void setPassword(const String &v) { s_.password = v; }
+    void setIP(const IPAddress &v)    { s_.ip       = v; }
+    void setPortCtrl(uint16_t v)      { s_.portCtrl = v; }
+    void setPortData(uint16_t v)      { s_.portData = v; }
+
+private:
+    static constexpr const char *NS = "netcfg";
+    NetSettings s_;
+};
+
+
+
+// Debug class
+// ---------------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------
+class Debugger
+{
+public:
+    // Constructor: remembers which Serial (or any Stream) to use
+    Debugger(Stream&  port = Serial,
+             uint32_t baud = SERIAL_BAUD,
+             bool en       = true)
+        : _port(port),
+          _baud(baud),
+          _enabled(en) {}
+
+    // Call once after Serial.begin(); prints one banner line
+    void begin(uint32_t baud = SERIAL_BAUD)
+    {
+        _baud = baud; // store for reference
+        _port.printf("\n[DBG] logger active @%lu baud\n", _baud);
+    }
+
+    // Turn messages on and off while running
+    void enable()          { _enabled = true;  }
+    void disable()         { _enabled = false; }
+    bool isEnabled() const { return _enabled;  }
+
+    // Print plain text (const char* or Arduino String) with newline
+    template<typename T>
+    void print(const T& v)
+    {
+        if (!_enabled) return;
+        _port.println(v);
+    }
+
+    // Print formatted text (printf style) with newline
+    void log(const char* fmt, ...)
+    {
+        if (!_enabled) return;
+        char buf[128];
+        va_list ap;
+        va_start(ap, fmt);
+        vsnprintf(buf, sizeof(buf), fmt, ap);
+        va_end(ap);
+        _port.println(buf);
+    }
+
+private:
+    Stream&  _port;     // reference to the Serial (or other Stream) object
+    uint32_t _baud;     // baud rate, only for the banner message
+    bool     _enabled;  // false = mute, true = print
+};
+
 
 #endif // HELPERS_H

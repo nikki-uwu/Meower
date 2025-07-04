@@ -4,45 +4,10 @@
 
 
 
-//  DebugLogger implementation
+// External variables
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 extern BootCheck bootCheck; // defined in helpers.cpp
-
-DebugLogger::DebugLogger(Stream&  port,
-                         uint32_t baud,
-                         bool     startEnabled)
-: _ser(port),
-  _baud(baud),
-  _enabled(startEnabled)
-{}
-
-// Port must already be open (Serial.begin(...) done in setup()).
-void DebugLogger::begin()
-{
-    _ser.printf("\n[DBG] logger active @%lu baud\n", _baud);
-}
-
-void DebugLogger::enable()          { _enabled = true;  }
-void DebugLogger::disable()         { _enabled = false; }
-bool DebugLogger::isEnabled() const { return _enabled;  }
-
-void DebugLogger::log(const char* fmt, ...)
-{
-    if (!_enabled) { return; }
-
-    char buf[128];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    _ser.println(buf); // newline first for readability
-}
-
-
-
-
 
 
 
@@ -168,8 +133,8 @@ void SerialCli::_cmdShowConfig()
                 "  port_ctrl  : %u\n"
                 "  port_data  : %u\n",
                 _cfg.ssid.c_str(),
-                _cfg.pass.c_str(),
-                _cfg.ip.c_str(),
+                _cfg.password.c_str(),      // password
+                _cfg.ip.toString().c_str(), // IPAddress to text
                 _cfg.portCtrl,
                 _cfg.portData);
 }
@@ -185,7 +150,7 @@ void SerialCli::_cmdSetConfig(const char* field,
     }
     if (strcasecmp(field, "pass") == 0)
     {
-        _cfg.pass = value;
+        _cfg.password = value;
         _ser.println("OK");
         return;
     }
@@ -193,7 +158,7 @@ void SerialCli::_cmdSetConfig(const char* field,
     {
         if (_validIp(value))
         {
-            _cfg.ip = value;
+            _cfg.ip.fromString(value);  // ← text → IPAddress
             _ser.println("OK");
         }
         else
@@ -231,35 +196,27 @@ void SerialCli::_cmdSetConfig(const char* field,
 
 void SerialCli::_cmdApplyConfig()
 {
-    if (_cfg.ssid.isEmpty())
-    {
-        _ser.println("ERR: ssid not set");
-        return;
-    }
-    if (_cfg.ip.isEmpty())
-    {
-        _ser.println("ERR: ip not set");
-        return;
-    }
-    if (_cfg.pass.isEmpty())
-    {
+    // 1. sanity checks
+    if (_cfg.ssid.isEmpty())     { _ser.println("ERR: ssid not set"); return; }
+    if (_cfg.ip == IPAddress())  { _ser.println("ERR: ip not set");   return; }
+
+    if (_cfg.password.isEmpty())
         _ser.println("WARN: pass is empty");
-    }
 
-    _ser.println("Saving to NVS ...");
+    _ser.println("Saving to NVS …");
 
-    Preferences p;
-    p.begin("netconf", false);
-    p.putString ("ssid",       _cfg.ssid);
-    p.putString ("pass",       _cfg.pass);
-    p.putString ("ip",         _cfg.ip);
-    p.putUShort ("port_ctrl",  _cfg.portCtrl);
-    p.putUShort ("port_data",  _cfg.portData);
-    p.end();
+    // 2. write everything through the single NetConfig class
+    NetConfig nc;                          // owns the Preferences handle
+    nc.setSSID    (_cfg.ssid);
+    nc.setPassword(_cfg.password);
+    nc.setIP      (IPAddress(_cfg.ip));
+    nc.setPortCtrl(_cfg.portCtrl);
+    nc.setPortData(_cfg.portData);
+    nc.save();                             // ← the only flash write
 
+    // 3. note normal boot and restart
     Preferences bm;
-    if (bm.begin("bootlog", false))
-    {
+    if (bm.begin("bootlog", false)) {
         bm.putString("BootMode", "NormalMode");
         bm.end();
     }

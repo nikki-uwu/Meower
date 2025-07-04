@@ -1,16 +1,3 @@
-// ---------------------------------------------------------------------------------------------------------------------------------
-// serial_io.h
-//
-// One header that groups:
-//
-// - DebugLogger - printf-style debug output, on/off switch,
-//                 easy redirection to another Stream.
-// - SerialCli   - human command-line interface for editing
-//                 Wi-Fi / UDP settings.
-//
-// NOTE: Both classes assume Serial.begin(...) has already been
-//       called from setup(). They never open the port themselves.
-// ---------------------------------------------------------------------------------------------------------------------------------
 #pragma once
 
 #include <Arduino.h>
@@ -22,45 +9,9 @@
 
 
 
-// DebugLogger - runtime diagnostics
-// ---------------------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------------------
-class DebugLogger
-{
-public:
-    explicit DebugLogger(Stream&           = Serial     ,
-                         uint32_t baud     = SERIAL_BAUD,
-                         bool startEnabled = true       );
-
-    void begin();   // prints banner, port must already be open
-    void enable();  // turn logs on
-    void disable(); // turn logs off
-    bool isEnabled() const;
-
-    // printf-style; attribute lets GCC catch format errors.
-    void log(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-
-private:
-    Stream&  _ser;
-    uint32_t _baud;
-    bool     _enabled;
-};
-
-
-
-
 // NetConfig - Class and structure
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-struct NetConfig
-{
-    String   ssid;
-    String   pass;
-    String   ip;
-    uint16_t portCtrl = UDP_PORT_CTRL;
-    uint16_t portData = UDP_PORT_PC_DATA;
-};
-
 // SerialCli - user commands over the same UART
 class SerialCli
 {
@@ -71,7 +22,7 @@ class SerialCli
         void begin();  // prints CLI banner, port must already be open
         void update(); // parse incoming chars
 
-        const NetConfig& getConfig() const  // Basicaly get a reference (pointer) to saved internal config in read-only mode
+        const NetSettings& getConfig() const  // Basicaly get a reference (pointer) to saved internal config in read-only mode
         {
             return _cfg;
         }
@@ -97,7 +48,7 @@ class SerialCli
 
         Stream&        _ser;  // just to be clear - it's a reference (fancy pointer) to Stream, so we can use _ser as normal way but inside it's a pointer.
         const uint32_t _baud;
-        NetConfig      _cfg;
+        NetSettings    _cfg;  // NetSettings comes from helpers.h
         char           _rx[128] {};
         size_t         _rxPos {0U};
 };

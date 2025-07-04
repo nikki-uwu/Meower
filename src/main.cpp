@@ -25,7 +25,7 @@ SPIClass spi(SPI);                 // Use the default SPI instance on the ESP32-
 Battery_Sense BatterySense(PIN_BAT_SENSE, BAT_SCALE, BAT_SAMPLING_MS); // defaults: GPIO-4, scaling 0.00428, 1000 ms (1 s) between battery sampling
 Blinker       LEDheartBeat(PIN_LED      , LED_PERIOD_MS  ); // GPIO-20, 250 ms ON (chech defines), 5000 ms period
 BootCheck     bootCheck;
-DebugLogger   Debug(Serial, SERIAL_BAUD);   // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
+Debugger      Debug(Serial, SERIAL_BAUD);   // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
 SerialCli     CLI(Serial, SERIAL_BAUD);     // even tho just one hardware Serial will be used kind of anyway, we are just telling explicetly we use hardware serial provided by ESP and same baud speed
 
 // FreeRTOS handles
@@ -412,7 +412,7 @@ void setup()
 
     if (!netconf_ok)
     {
-        DBG("[BOOT] netconf namespace not found - creating");
+        Debug.print("[BOOT] netconf namespace not found - creating");
         prefs.end();  // always close before re-opening
 
         if (prefs.begin("netconf", false))  // open write-mode
@@ -427,7 +427,7 @@ void setup()
         }
         else
         {
-            DBG("[BOOT] Failed to create netconf NVS - staying in AP mode");
+            Debug.print("[BOOT] Failed to create netconf NVS - staying in AP mode");
             prefs.end();
             return;
         }
@@ -444,7 +444,7 @@ void setup()
 
     if (ssid.isEmpty())
     {
-        DBG("[WIFI] No SSID set - entering AP mode");
+        Debug.print("[WIFI] No SSID set - entering AP mode");
         Preferences bm;
         if (bm.begin("bootlog", false))          // write-mode
         {

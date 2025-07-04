@@ -45,13 +45,6 @@
 
 // Do you need debug stuff?
 #define SERIAL_DEBUG 1
-#if SERIAL_DEBUG
-  class DebugLogger;            // forward-declare
-  extern DebugLogger Debug;     // global instance lives in main.cpp
-  #define DBG(fmt, ...)  do { Debug.log(fmt, ##__VA_ARGS__); } while (0)
-#else
-  #define DBG(fmt, ...)  ((void)0)
-#endif
 
 #define SERIAL_BAUD  115200
 

@@ -7,6 +7,7 @@ static WebServer   server(80);      // captive-portal HTTP server
 static Preferences prefs;           // netconf NVS handle
 extern BootCheck   bootCheck;       // from helpers.cpp
 extern SerialCli   CLI;             // UART CLI
+extern Debugger    Debug; 
 
 static const char* AP_SSID = "EEG-SETUP";
 static const char* AP_PASS = "password";
@@ -113,7 +114,7 @@ void handleSave()
         bm.end();
     }
     else
-        DBG("[AP] WARN: bootlog namespace not available");
+        Debug.print("[AP] WARN: bootlog namespace not available");
 
     server.send(200, "text/plain", "Saved - rebooting...");
     delay(100);
@@ -125,39 +126,39 @@ void handleSave()
 // ------------------------------------------------------------------
 void maybeEnterAPMode()
 {
-    DBG("DBG: >>> maybeEnterAPMode()");
+    Debug.print("DBG: >>> maybeEnterAPMode()");
 
     Preferences bm;
     bm.begin("bootlog", false);                      // R/W auto-create
     String mode = bm.getString("BootMode", "<missing>");
     bm.end();
 
-    DBG("DBG: BootMode = %s", mode.c_str());
+    Debug.log("DBG: BootMode = %s", mode.c_str());
 
     if (mode == "NormalMode")
     {
-        DBG("DBG: NormalMode - continue with STA");
+        Debug.print("DBG: NormalMode - continue with STA");
         return;
     }
 
     // Launch portal
-    DBG("DBG: Launching Access Point portal");
+    Debug.print("DBG: Launching Access Point portal");
     WiFi.disconnect(true, true);
     delay(100);
     WiFi.mode(WIFI_MODE_AP);
     delay(100);
 
     bool ok = WiFi.softAP(AP_SSID, AP_PASS, 1);
-    if (ok) DBG("DBG: softAP OK - SSID: %s", AP_SSID);
-    else    DBG("ERR: softAP FAILED");
+    if (ok) Debug.log("DBG: softAP OK - SSID: %s", AP_SSID);
+    else    Debug.print("ERR: softAP FAILED");
 
     IPAddress ip = WiFi.softAPIP();
-    DBG("DBG: AP IP address = %s", ip.toString().c_str());
+    Debug.log("DBG: AP IP address = %s", ip.toString().c_str());
 
     server.on("/",     HTTP_GET , handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.begin();
-    DBG("DBG: Captive portal ready at http://192.168.4.1/");
+    Debug.print("DBG: Captive portal ready at http://192.168.4.1/");
 
     static Blinker led(PIN_LED, 100, 1000); // slow heartbeat
 
@@ -170,7 +171,7 @@ void maybeEnterAPMode()
         static uint32_t last = 0;
         if (millis() - last > 5000)
         {
-            DBG("DBG: portal alive - free heap %u B", esp_get_free_heap_size());
+            Debug.log("DBG: portal alive - free heap %u B", esp_get_free_heap_size());
             last = millis();
         }
         delay(2);
