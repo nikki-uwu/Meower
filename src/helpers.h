@@ -289,7 +289,7 @@ public:
     void setPortData(uint16_t v)      { s_.portData = v; }
 
 private:
-    static constexpr const char *NS = "netcfg";
+    static constexpr const char *NS = "netconf";
     NetSettings s_;
 };
 

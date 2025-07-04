@@ -442,6 +442,12 @@ void setup()
 
     prefs.end();
 
+    Debug.log("[BOOT] ssid      : %s", ssid.c_str());
+    Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
+    Debug.log("[BOOT] ip        : %s", ip.c_str());
+    Debug.log("[BOOT] port_ctrl : %u", port_ctrl);
+    Debug.log("[BOOT] port_data : %u", port_data);
+
     if (ssid.isEmpty())
     {
         Debug.print("[WIFI] No SSID set - entering AP mode");

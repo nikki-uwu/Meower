@@ -235,26 +235,33 @@ NetConfig::NetConfig() {
 }
 
 // ---------- NVS I/O ----------
-bool NetConfig::load() {
+bool NetConfig::load()
+{
     Preferences p;
     if (!p.begin(NS, /*read-only=*/true)) return false;
-    s_.ssid      = p.getString("ssid", s_.ssid);
-    s_.password  = p.getString("pass", s_.password);
-    s_.ip        = IPAddress(p.getUInt("ip", (uint32_t)s_.ip));
-    s_.portCtrl  = p.getUShort("pCtrl", s_.portCtrl);
-    s_.portData  = p.getUShort("pData", s_.portData);
+
+    s_.ssid      = p.getString("ssid",  s_.ssid);
+    s_.password  = p.getString("pass",  s_.password);
+
+    String ipStr = p.getString("ip",    s_.ip.toString());  // ← read text
+    s_.ip.fromString(ipStr);                                // convert to IP
+
+    s_.portCtrl  = p.getUShort("port_ctrl", s_.portCtrl);
+    s_.portData  = p.getUShort("port_data", s_.portData);
     p.end();
     return true;
 }
 
-bool NetConfig::save() const {
+bool NetConfig::save() const
+{
     Preferences p;
     if (!p.begin(NS, /*read-write=*/false)) return false;
-    p.putString("ssid",  s_.ssid);
-    p.putString("pass",  s_.password);
-    p.putUInt  ("ip",    (uint32_t)s_.ip);
-    p.putUShort("pCtrl", s_.portCtrl);
-    p.putUShort("pData", s_.portData);
+
+    p.putString ("ssid",       s_.ssid);
+    p.putString ("pass",       s_.password);
+    p.putString ("ip",         s_.ip.toString()); // ← save text
+    p.putUShort ("port_ctrl",  s_.portCtrl);
+    p.putUShort ("port_data",  s_.portData);
     p.end();
     return true;
 }
