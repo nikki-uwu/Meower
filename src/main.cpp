@@ -442,11 +442,7 @@ void setup()
 
     prefs.end();
 
-    Debug.log("[BOOT] ssid      : %s", ssid.c_str());
-    Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
-    Debug.log("[BOOT] ip        : %s", ip.c_str());
-    Debug.log("[BOOT] port_ctrl : %u", port_ctrl);
-    Debug.log("[BOOT] port_data : %u", port_data);
+    
 
     if (ssid.isEmpty())
     {
@@ -465,7 +461,6 @@ void setup()
     // Configure Wi-Fi using saved credentials and ports
     net.begin(ssid.c_str(), pass.c_str(), ip.c_str(), port_ctrl, port_data);
     net.setTargetIP(ip);
-
 
     // CONFIGURE SPI PINS
     pinMode(PIN_SCLK     , OUTPUT);
@@ -596,6 +591,17 @@ void setup()
     // Start ADC so it tries to send data right away without any other need so config or what ever
     // Signal will be square wave with 1s period
     continious_mode_start_stop(HIGH);
+
+
+
+
+    delay(2000);
+    Debug.log("[BOOT] ssid      : %s", ssid.c_str());
+    Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
+    Debug.log("[BOOT] PC ip     : %s", ip.c_str());
+    Debug.log("[BOOT] board ip  : %s", net.getLocalIP().toString().c_str());
+    Debug.log("[BOOT] port_ctrl : %u", port_ctrl);
+    Debug.log("[BOOT] port_data : %u", port_data);
 }
 
 // This loop will repeat again and again forever - yeah yeah, i wasn't supa used to esp programming :3

@@ -71,7 +71,6 @@ public:
     uint16_t  getControlPort() const { return _localPortCtrl;      }
     uint16_t  getDataPort()    const { return _remotePortData;     }
     IPAddress getLocalIP()     const { return _localIP;            }
-    String    getLocalIPstr()  const { return _localIP.toString(); }
 
     void onWifiEvent(WiFiEvent_t event);   // called by global callback
 
