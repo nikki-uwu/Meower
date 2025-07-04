@@ -324,7 +324,7 @@ static inline void dcBlockerIIR_16ch_2p(int32_t *      data_inout        , // [1
 // - selectNetworkFreq:  selector for Network frequency which deoends on region
 // - filter_OnOff:       switch filter on or off. if off it selects bypass coefficients and it will need just several ticks to get fully empty
 // - Uses static (hidden) per-channel state arrays (not thread-safe!)
-// - Coefficients and shifts are designed for Q = 50, f0 = 50/60 Hz (see Python script at the end of file)
+// - Coefficients and shifts are designed for Q = 35, f0 = 50/60 Hz (see Python script at the end of file)
 // ------------------------------------------------------------------------------------------------------------------
 // Design: Each stage uses the same [b0, b1, b2], [a1, a2] coefficients, applied in cascade.
 // ------------------------------------------------------------------------------------------------------------------
@@ -339,30 +339,30 @@ static inline void notch5060Hz_16ch_4p(int32_t *      data_inout        ,
     // Number of coefficient sets we have excluding BYPASS set
     constexpr uint32_t numOfCoefficients = NUM_OF_FREQ_PRESETS * NUM_OF_REGIONS_5060;
 
-    // Coefficients for f0 = 50 Hz, Q = 50 and all sets of sampling and network frequencies
+    // Coefficients for f0 = 50 Hz, Q = 35 and all sets of sampling and network frequencies
     // b0, b1, b2
-    static const int32_t BQ_B[numOfCoefficients + 1][3] = { {   2120831095,  -1310745701,   2120831095 } , // 50 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {   1067037342,  -1726502687,   1067037342 } ,
-                                                            {   1070379118,  -2035982070,   1070379118 } ,
-                                                            {   1072057838,  -2117718054,   1072057838 } ,
-                                                            {   1072899171,  -2139183561,   1072899171 } ,
-                                                            {   2115579049,   -265676615,   2115579049 } , // 60 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {   1065706435,  -1553733114,   1065706435 } ,
-                                                            {   1069709097,  -1989180730,   1069709097 } ,
-                                                            {   1071721674,  -2105477073,   1071721674 } ,
-                                                            {   1072730799,  -2135939963,   1072730799 } ,
+    static const int32_t BQ_B[numOfCoefficients + 1][3] = { {   2109607985,  -1303809438,   2109607985 } , // 50 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {   1064189426,  -1721894661,   1064189426 } ,
+                                                            {   1068944381,  -2033253038,   1068944381 } ,
+                                                            {   1071337744,  -2116295597,   1071337744 } ,
+                                                            {   1072538438,  -2138464320,   1072538438 } ,
+                                                            {   2102190518,   -263995270,   2102190518 } , // 60 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {   1062299171,  -1548765538,   1062299171 } ,
+                                                            {   1067990015,  -1985984006,   1067990015 } ,
+                                                            {   1070858217,  -2103780747,   1070858217 } ,
+                                                            {   1072298084,  -2135078375,   1072298084 } ,
                                                             {   1073741824,            0,            0 } }; // BYPASS
     // a1, a2 (a0 is ignored since coefficients are normalized to have it equal to 1)
-    static const int32_t BQ_A[numOfCoefficients + 1][2] = { {  -1310745701,   2094178543 } , // 50 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {  -1726502687,   1060332861 } ,
-                                                            {  -2035982070,   1067016412 } ,
-                                                            {  -2117718054,   1070373852 } ,
-                                                            {  -2139183561,   1072056518 } ,
-                                                            {   -265676615,   2083674450 } , // 60 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {  -1553733114,   1057671045 } ,
-                                                            {  -1989180730,   1065676369 } ,
-                                                            {  -2105477073,   1069701524 } ,
-                                                            {  -2135939963,   1071719773 } ,
+    static const int32_t BQ_A[numOfCoefficients + 1][2] = { {  -1303809438,   2071732322 } , // 50 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {  -1721894661,   1054637027 } ,
+                                                            {  -2033253038,   1064146937 } ,
+                                                            {  -2116295597,   1068933663 } ,
+                                                            {  -2138464320,   1071335052 } ,
+                                                            {   -263995270,   2056897388 } , // 60 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {  -1548765538,   1050856519 } ,
+                                                            {  -1985984006,   1062238206 } ,
+                                                            {  -2103780747,   1067974610 } ,
+                                                            {  -2135078375,   1070854345 } ,
                                                             {            0,            0 } }; // BYPASS
 
     // Output scaling after accumulation and multiplication with coefficients
@@ -435,7 +435,7 @@ static inline void notch5060Hz_16ch_4p(int32_t *      data_inout        ,
 // - selectNetworkFreq:  selector for Network frequency which depends on region
 // - filter_OnOff:       switch filter on or off. if off it selects bypass coefficients and it will need just several ticks to get fully empty
 // - Uses static (hidden) per-channel state arrays (not thread-safe!)
-// - Coefficients and shifts are designed for Q = 50, f0 = 100/120 Hz (see Python script at the end of file)
+// - Coefficients and shifts are designed for Q = 35, f0 = 100/120 Hz (see Python script at the end of file)
 // ------------------------------------------------------------------------------------------------------------------
 // Design: Each stage uses the same [b0, b1, b2], [a1, a2] coefficients, applied in cascade.
 static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [16]: in-place, one sample per channel
@@ -449,30 +449,30 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
     // Number of coefficient sets we have excluding BYPASS set
     constexpr uint32_t numOfCoefficients = NUM_OF_FREQ_PRESETS * NUM_OF_REGIONS_5060;
 
-    // Coefficients for f0 = 100 Hz, Q = 50 and all sets of sampling and network frequencies
+    // Coefficients for f0 = 100 Hz, Q = 35 and all sets of sampling and network frequencies
     // b0, b1, b2
-    static const int32_t BQ_B[numOfCoefficients + 1][3] = { {   1047411947,   1694748130,   1047411947 } , // 100 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {   2120831095,  -1310745701,   2120831095 } ,
-                                                            {   1067037342,  -1726502687,   1067037342 } ,
-                                                            {   1070379118,  -2035982070,   1070379118 } ,
-                                                            {   1072057838,  -2117718054,   1072057838 } ,
-                                                            {   1042297342,   2068157033,   1042297342 } , // 120 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {   2115579049,   -265676615,   2115579049 } ,
-                                                            {   1065706435,  -1553733114,   1065706435 } ,
-                                                            {   1069709097,  -1989180730,   1069709097 } ,
-                                                            {   1071721674,  -2105477073,   1071721674 } ,
+    static const int32_t BQ_B[numOfCoefficients + 1][3] = { {   1036511020,   1677110060,   1036511020 } , // 100 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {   2109607985,  -1303809438,   2109607985 } ,
+                                                            {   1064189426,  -1721894661,   1064189426 } ,
+                                                            {   1068944381,  -2033253038,   1068944381 } ,
+                                                            {   1071337744,  -2116295597,   1071337744 } ,
+                                                            {   1029364502,   2042495310,   1029364502 } , // 120 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {   2102190518,   -263995270,   2102190518 } ,
+                                                            {   1062299171,  -1548765538,   1062299171 } ,
+                                                            {   1067990015,  -1985984006,   1067990015 } ,
+                                                            {   1070858217,  -2103780747,   1070858217 } ,
                                                             {   1073741824,            0,            0 } }; // BYPASS
     // a1, a2 (a0 is ignored since coefficients are normalized to have it equal to 1)
-    static const int32_t BQ_A[numOfCoefficients + 1][3] = { {   1694748130,   1021082069 } , // 100 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {  -1310745701,   2094178543 } ,
-                                                            {  -1726502687,   1060332861 } ,
-                                                            {  -2035982070,   1067016412 } ,
-                                                            {  -2117718054,   1070373852 } ,
-                                                            {   2068157033,   1010852861 } , // 120 hz network -> 250, 500, 1000, 2000, 4000 Hz
-                                                            {   -265676615,   2083674450 } ,
-                                                            {  -1553733114,   1057671045 } ,
-                                                            {  -1989180730,   1065676369 } ,
-                                                            {  -2105477073,   1069701524 } ,
+    static const int32_t BQ_A[numOfCoefficients + 1][3] = { {   1677110060,    999280216 } , // 100 hz network -> 250, 500, 1000, 2000, 4000 Hz
+                                                            {  -1303809438,   2071732322 } ,
+                                                            {  -1721894661,   1054637027 } ,
+                                                            {  -2033253038,   1064146937 } ,
+                                                            {  -2116295597,   1068933663 } ,
+                                                            {   2042495310,    984987179 } , // 120 hz network -> 250, 500, 1000, 2000, 4000 Hz 
+                                                            {   -263995270,   2056897388 } ,
+                                                            {  -1548765538,   1050856519 } ,
+                                                            {  -1985984006,   1062238206 } ,
+                                                            {  -2103780747,   1067974610 } ,
                                                             {            0,            0 } }; // BYPASS
 
     // Output scaling after accumulation and multiplication with coefficients
@@ -554,7 +554,7 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
 // #  * Generates fixed-point (int32_t) coefficients for all EEG DSP filters:
 // #      - 7-tap FIR sinc³ equalizer (for ADC correction)
 // #      - 2nd-order IIR DC-removal highpass (multi cutoff, per Fs)
-// #      - 2nd-order IIR notches: 50/60 Hz and 100/120 Hz (Q=50, per Fs)
+// #      - 2nd-order IIR notches: 50/60 Hz and 100/120 Hz (Q=35, per Fs)
 // #  * Fully transparent scaling: coefficients use all int32 range,
 // #    with exact right shift ("bit offset") reported per set
 // #  * All outputs print as C arrays, ready to paste into firmware.
@@ -575,7 +575,7 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
 //
 // # Notch frequencies (EU/US + higher harmonics for modern BCI)
 // notch_freqs = [50, 60, 100, 120]  # Hz
-// notch_Q = 50                      # Q for deep, narrow rejection
+// notch_Q = 35                      # Q for deep, narrow rejection
 //
 // # ---------------------------------------------------------------------
 // #                 1.  7-TAP FIR SINC³ EQUALIZER DESIGN
@@ -662,7 +662,7 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
 // #   * Designs pairs of notches (standard for global EEG/BCI use):
 // #       [50, 60] Hz — powerline
 // #       [100,120] Hz — harmonics/interference
-// #   * Each notch is Q=50 (sharp, deep), per sample rate.
+// #   * Each notch is Q=35 (sharp, deep), per sample rate.
 // #   * For each: prints C arrays of B[3] (num), A[2] (den, skip a0)
 // #   * Bit offset reported per set
 // #   * Clamping to int32 range after quantization
@@ -749,7 +749,7 @@ static inline void notch100120Hz_16ch_4p(int32_t *      data_inout        , // [
 //         print(f"//   Fs = {fs} Hz, bit_offset = {ofs}")
 //     print()
 //
-// # === NOTCH FILTERS: 50/60 Hz and 100/120 Hz, Q=50 ===
+// # === NOTCH FILTERS: 50/60 Hz and 100/120 Hz, Q=35 ===
 // for title, (pair, label) in zip([ "50/60", "100/120" ], [((50, 60), "NOTCH"), ((100, 120), "NOTCHHI")]):
 //     d = notch_out[pair]
 //     print(f"\n/* === {label} Notch filter coefficients ({pair[0]} and {pair[1]} Hz, Q={notch_Q}) === */")
