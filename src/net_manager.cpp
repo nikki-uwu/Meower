@@ -84,6 +84,12 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
         _reconnPend = false;
         _giveUp     = false;
         _lastFailMs = 0;
+
+        Debug.log("[CONNECT EVENT] localIP      : %s",  _localIP.toString().c_str());
+        Debug.log("[CONNECT EVENT] state        : %u" , static_cast<uint8_t>(_state));
+        Debug.log("[CONNECT EVENT] peerFound    : %d" , _peerFound);
+        Debug.log("[CONNECT EVENT] reconnPend   : %d" , _reconnPend);
+        Debug.log("[CONNECT EVENT] giveUp       : %d" , _giveUp);
     }
 }
 

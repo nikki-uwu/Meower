@@ -442,8 +442,6 @@ void setup()
 
     prefs.end();
 
-    
-
     if (ssid.isEmpty())
     {
         Debug.print("[WIFI] No SSID set - entering AP mode");
@@ -592,10 +590,6 @@ void setup()
     // Signal will be square wave with 1s period
     continious_mode_start_stop(HIGH);
 
-
-
-
-    delay(2000);
     Debug.log("[BOOT] ssid      : %s", ssid.c_str());
     Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
     Debug.log("[BOOT] PC ip     : %s", ip.c_str());
