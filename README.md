@@ -1,2 +1,2 @@
 # Meower
-Real-time EEG streaming firmware for ESP32-C3 + dual ADS1299
+Are you a silly meower?
