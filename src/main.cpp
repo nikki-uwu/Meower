@@ -417,11 +417,11 @@ void setup()
 
         if (prefs.begin("netconf", false))  // open write-mode
         {
-            prefs.putString("ssid", "");
-            prefs.putString("pass", "");
-            prefs.putString("ip", "");
-            prefs.putUShort("port_ctrl", 0);
-            prefs.putUShort("port_data", 0);
+            prefs.putString("ssid"     , "");
+            prefs.putString("pass"     , "");
+            prefs.putString("ip"       , "");
+            prefs.putUShort("port_ctrl", 0 );
+            prefs.putUShort("port_data", 0 );
             prefs.end();  // close after write
             prefs.begin("netconf", true);  // reopen as read-only for rest of setup
         }
