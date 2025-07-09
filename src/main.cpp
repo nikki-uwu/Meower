@@ -105,7 +105,7 @@ void continious_mode_start_stop(uint8_t on_off)
     {
         // Safe SPI transaction (2 MHz for config then back to 8 MHz)
         spiTransaction_OFF();
-        spiTransaction_ON(SPI_RESET_CLOCK);
+        spiTransaction_ON(SPI_COMMAND_CLOCK);
 
         // Before any start of the continious we must check board Sample Rate
         // which is at Config 1 which is to read is 0x21
@@ -147,7 +147,7 @@ void continious_mode_start_stop(uint8_t on_off)
         // delay before and after reading in xfer function we can ignore it
         // Safe SPI transaction (2 MHz for config then back to 8 MHz)
         spiTransaction_OFF();
-        spiTransaction_ON(SPI_RESET_CLOCK);
+        spiTransaction_ON(SPI_COMMAND_CLOCK);
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
         spiTransaction_OFF();
         spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
@@ -585,6 +585,12 @@ void setup()
     attachInterrupt(PIN_DRDY,  // GPIO number
                     drdy_isr,  // ISR function (in IRAM)
                     FALLING ); // trigger on falling edge
+
+    // Set normal BCI mode
+    if (BCI_MODE)
+    {
+        BCI_preset();
+    }
 
     // Start ADC so it tries to send data right away without any other need so config or what ever
     // Signal will be square wave with 1s period

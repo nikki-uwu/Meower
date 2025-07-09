@@ -59,7 +59,7 @@ void SerialCli::_processLine()
 {
     if (_rxPos == 0U)
     {
-        return;                         // blank
+        return; // blank
     }
 
     char* cmd = strtok(_rx, " ");
@@ -70,7 +70,7 @@ void SerialCli::_processLine()
 
     struct Verb
     {
-        const char*                   name;
+        const char* name;
         void (SerialCli::*handler)();
     };
     const Verb fixed[] =
@@ -197,8 +197,9 @@ void SerialCli::_cmdSetConfig(const char* field,
 void SerialCli::_cmdApplyConfig()
 {
     // 1. sanity checks
-    if (_cfg.ssid.isEmpty())     { _ser.println("ERR: ssid not set"); return; }
-    if (_cfg.ip == IPAddress())  { _ser.println("ERR: ip not set");   return; }
+    if (_cfg.ssid.isEmpty())                            { _ser.println("ERR: ssid not set"); return; }
+    if (_cfg.ip == IPAddress())                         { _ser.println("ERR: ip not set");   return; }
+    if ((_cfg.portCtrl == 0U) || (_cfg.portData == 0U)) { _ser.println("ERR: port not set"); return; }
 
     if (_cfg.password.isEmpty())
         _ser.println("WARN: pass is empty");

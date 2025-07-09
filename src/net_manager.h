@@ -68,9 +68,9 @@ public:
     // Drive a Blinker instance according to the current link state
     void driveLed(Blinker &led) noexcept;
 
-    uint16_t  getControlPort() const { return _localPortCtrl;      }
-    uint16_t  getDataPort()    const { return _remotePortData;     }
-    IPAddress getLocalIP()     const { return _localIP;            }
+    uint16_t  getControlPort() const { return _localPortCtrl;  }
+    uint16_t  getDataPort()    const { return _remotePortData; }
+    IPAddress getLocalIP()     const { return _localIP;        }
 
     void onWifiEvent(WiFiEvent_t event);   // called by global callback
 

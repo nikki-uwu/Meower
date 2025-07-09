@@ -56,7 +56,7 @@ void BootCheck::init()
 void BootCheck::update()
 {
     static bool done = false;
-    if (done || millis() < FAST_WINDOW_MS) return;
+    if (done || millis() < 1000) return;
 
     if (prefs.begin("bootlog", false))
     {
@@ -104,8 +104,8 @@ void ads1299_full_reset()
     continuousReading = false; 
 
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
-    spiTransaction_OFF();               // stop SPI
-    spiTransaction_ON(SPI_RESET_CLOCK); // start at 2 MHz
+    spiTransaction_OFF();                 // stop SPI
+    spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
     // Based on datasheet all CS and START (it says all digital signals) should go LOW
     // Page 62, check diagramm
@@ -148,6 +148,7 @@ void ads1299_full_reset()
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
     }
 
+    // CONFIG 3
     // We are using internal reference buffer so we have to set it right away becase by default
     // config is 0x60 abd it means turn off internal reference buffer
     // Configuration 3 - Reference and bias
@@ -162,6 +163,7 @@ void ads1299_full_reset()
         xfer('B', 3u, Master_conf_3, rx_mes);
     }
 
+    // CONFIG 1
     // Then we need to setup up clock for slave and update reference signal again, otherwise
     // slave is in different state comparing to master
     // Configuration 1 - Daisy-chain, reference clock, sample rate
@@ -187,6 +189,7 @@ void ads1299_full_reset()
         xfer('B', 3u, Config_3, rx_mes);
     }
 
+    // CONFIG 2
     // Next I want to preset testing signals parameters - FOR BOTH ADCs
     // Test signal are generated internaly
     // Test signal amplitude 3.75 mV (2 × -(VREFP - VREFN) / 2400, Vwhere on this board VREFP is +4.5V and VREFN is 0 V)
@@ -203,6 +206,7 @@ void ads1299_full_reset()
         xfer('B', 3u, Config_2, rx_mes);
     }
 
+    // CHANNELS CONFIG
     // Set all channels to normal mode (both positive and negative are needed for each channel) with 0 gain
     // Channels settings
     // bit 7                 | 6 5 4 | 3                | 2 1 0
@@ -225,8 +229,57 @@ void ads1299_full_reset()
     spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 8 MHz)
 }
 
+void BCI_preset()
+{
+    // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
+    spiTransaction_OFF();                 // stop SPI
+    spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
-NetConfig::NetConfig() {
+    // CHANNELS CONFIG
+    // Set all channels to SRB2 mode (all positive are short to eachother) with 2 gain
+    // Channels settings
+    // bit 7                 | 6 5 4 | 3                | 2 1 0
+    // use Power down On/Off | GAIN  | SRB2 open/closed | Channel input
+    //                  76543210
+    // Channel_conf = 0b00011000 (0x28)
+    // We have 8 channels in each ADC and we assign default settings to all of them in pairs
+    for (uint8_t ind = 0; ind < 8u; ind++)
+    {
+        static const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x28 };
+        uint8_t              rx_mes[3u]          = {0}; // just empty message, we do need any response here
+        xfer('B', 3u, Config_Channels, rx_mes);
+
+        // wait for 1 ms
+        delay(1);
+    }
+
+    // CONFIG 3
+    // We are using internal reference buffer so we have to set it right away becase by default
+    // config is 0x60 abd it means turn off internal reference buffer
+    // Configuration 3 - Reference and bias
+    // bit 7                | 6        | 5        | 4         | 3                | 2                  | 1                      | 0 read only
+    // use Power ref buffer | Always 1 | Always 1 | BIAS meas | BIAS ref ext/int | BIAS power Down/UP | BIAS sence lead OFF/ON | LEAD OFF status
+    //              76543210
+    //              X11YZMKR
+    // Config_3 = 0b11100000; 0xE0
+    {
+        static const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xEC};
+        uint8_t              rx_mes[3u]        = {0}; // just empty message, we do need any response here
+        xfer('M', 3u, Master_conf_3, rx_mes);
+
+        static const uint8_t Slave_conf_3[3u] = {0x43, 0x00, 0xE8};
+        xfer('S', 3u, Slave_conf_3, rx_mes);
+    }
+
+    // Reconfigure SPI frequency to working one
+    spiTransaction_OFF();                          // stop SPI
+    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 8 MHz)
+}
+
+
+
+NetConfig::NetConfig()
+{
     s_.ssid      = "ESP32";
     s_.password  = "esp32-setup";
     s_.ip        = IPAddress(192,168,4,1);

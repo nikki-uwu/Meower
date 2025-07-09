@@ -80,9 +80,15 @@ static void send_error(const char *msg)
 // Command helpers reused inside the family handlers
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-static void cmd_RESET(char **)
+static void cmd_ADC_RESET(char **)
 {
     ads1299_full_reset();
+
+    // If we use it for BCI it does normal preset right away
+    if (BCI_MODE)
+    {
+        BCI_preset();
+    }
 }
 static void cmd_START_CONT(char **)
 {
@@ -147,7 +153,7 @@ static void cmd_SPI_SR(char **args, const char *orig)
 
     // Safe SPI transaction (2 MHz for config then back to 8 MHz)
     spiTransaction_OFF();
-    spiTransaction_ON(SPI_RESET_CLOCK);
+    spiTransaction_ON(SPI_COMMAND_CLOCK);
     xfer(target, len, tx, rx);
     spiTransaction_OFF();
     spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
@@ -232,7 +238,7 @@ void handle_SPI(char **ctx, const char * /*orig*/)
     // 4. TRANSACTION  (reuse existing SPI helper)
     // --------------------------------------------------------------------
     spiTransaction_OFF();
-    spiTransaction_ON(SPI_RESET_CLOCK);          // 2 MHz for config
+    spiTransaction_ON(SPI_COMMAND_CLOCK);          // 2 MHz for config
     xfer(target, len, tx, rx);                   // full-duplex exchange
     spiTransaction_OFF();
     spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // back to 8 MHz
@@ -245,7 +251,7 @@ void handle_SPI(char **ctx, const char * /*orig*/)
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // FAMILY: SYS  (prefix "sys") - case-insensitive
-// Commands:   reset   start_cnt   stop_cnt   esp_reboot   erase_flash
+// Commands:   adc_reset   start_cnt   stop_cnt   esp_reboot   erase_flash
 //             FILTER_EQUALIZER_ON   | FILTER_EQUALIZER_OFF
 //             FILTER_DC_ON          | FILTER_DC_OFF
 //             FILTER_5060_ON        | FILTER_5060_OFF
@@ -263,7 +269,7 @@ void handle_SYS(char **ctx, const char * /*orig*/)
     }
 
     // Reset and streaming commands
-    if (!strcasecmp(cmd, "reset"))           { cmd_RESET(ctx);       return; }
+    if (!strcasecmp(cmd, "adc_reset"))       { cmd_ADC_RESET(ctx);   return; }
     if (!strcasecmp(cmd, "start_cnt"))       { cmd_START_CONT(ctx);  return; }
     if (!strcasecmp(cmd, "stop_cnt"))        { cmd_STOP_CONT(ctx);   return; }
     if (!strcasecmp(cmd, "esp_reboot"))      { cmd_ESP_REBOOT(ctx);  return; }
@@ -453,7 +459,7 @@ void handle_SYS(char **ctx, const char * /*orig*/)
     // --------------------------------------------------------------------
     char out[256];
     snprintf(out, sizeof(out),
-        "sys - got '%s', expected (reset|start_cnt|stop_cnt|esp_reboot|erase_flash|filter_equalizer_on|filter_equalizer_off|filter_dc_on|filter_dc_off|filter_5060_on|filter_5060_off|filter_100120_on|filter_100120_off|filters_on|filters_off|dccutofffreq|networkfreq|digitalgain)", cmd);
+        "sys - got '%s', expected (adc_reset|start_cnt|stop_cnt|esp_reboot|erase_flash|filter_equalizer_on|filter_equalizer_off|filter_dc_on|filter_dc_off|filter_5060_on|filter_5060_off|filter_100120_on|filter_100120_off|filters_on|filters_off|dccutofffreq|networkfreq|digitalgain)", cmd);
     send_error(out);
 }
 

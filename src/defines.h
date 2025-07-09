@@ -3,7 +3,7 @@
 #define UDP_PORT_PC_DATA 5001 // EEG/data stream (fast data)
 #define UDP_PORT_CTRL    5000 // Command/control
 
-#define SPI_RESET_CLOCK 2000000             // Hz, during full reset we are ALWAYS do that at 2 MHz, since at 8 or 5 or even 4 MHz sometimes it's unstable
+#define SPI_COMMAND_CLOCK 2000000           // Hz, during full reset we are ALWAYS do that at 2 MHz, since at 8 or 5 or even 4 MHz sometimes it's unstable
 #define SPI_NORMAL_OPERATION_CLOCK 16000000 // Hz, 8 MHz at the moment is the highest stable clock i was able to get
 
 #define PIN_LED       20 // physical pin 30, GPIO20, U0RXD
@@ -22,7 +22,7 @@
 // Every frame still gets counter, so it's just several independent frames stacked together.
 // MIN ---  1 (48 bytes for parsed adc data, 4 bytes for timer and at the end of combined frames 4 bytes for battery float)
 // MAX --- 28 all frames with timestamps and battery value should be always < 1472 bytes (MTU), 52 * 28 + 4 = 1460
-#define FRAMES_PER_PACKET 28
+#define FRAMES_PER_PACKET 10
 
 // Buffer size for incoming command UDP packets (adjust based on your max command length)
 #define CMD_BUFFER_SIZE 512 // Bytes
@@ -45,8 +45,11 @@
 
 // Do you need debug stuff?
 #define SERIAL_DEBUG 1
-
 #define SERIAL_BAUD  115200
+
+// BCI MODE?
+// IF YES IT WILL SET UP ALL CHANNEL TO BASIC
+#define BCI_MODE 1
 
 
 
