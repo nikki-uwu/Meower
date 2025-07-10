@@ -18,6 +18,7 @@ import time
 import random
 import socket
 import numpy as np
+import scipy.signal as sps
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext
@@ -136,139 +137,209 @@ class App(tk.Tk):
 
     # ── plot column + signal-controls ───────────────────────────────────────
     # ── plot column + signal controls ───────────────────────────────────────────
+    # ── plot column + signal controls ───────────────────────────────────────────
     def _build_plot_column(self):
-        """Left pane: 16 over-plotted traces, wavelet image, PSD + DSP controls."""
+        """
+        Five stacked plots (Δt · time · wavelet · spectrogram · PSD) + controls.
+        Backgrounds are cached for fast blitting.
+        """
         col = tk.Frame(self, bg=self.BG)
         col.grid(row=0, column=0, sticky="nsew")
-        col.rowconfigure(0, weight=1)          # figure grows
-        col.rowconfigure(1, weight=0)          # controls shrink
+        col.rowconfigure(0, weight=1)
+        col.rowconfigure(1, weight=0)
         col.columnconfigure(0, weight=1)
-    
-        # ────────────────────── ❶ FIGURE (4 stacked cells) ──────────────────────
-        fig  = Figure(constrained_layout=True, dpi=100)
-        g    = fig.add_gridspec(4, 1, height_ratios=[4, 0.0001, 3, 2])
-    
-        # ❶A – 16 time-domain channels drawn on ONE axis
-        self.ax_time = fig.add_subplot(g[0])
-        self.ax_time.set_ylim(-5, 5)
-        self.ax_time.set_ylabel("V")
-        self.ax_time.grid(True, ls=":")
-        N0 = 100                                           # initial dummy length
-        xs = np.arange(N0)
-        self.time_lines = [self.ax_time.plot(xs, np.zeros(N0), lw=.8)[0]
-                           for _ in range(16)]
-    
-        # ❸ – wavelet / scalogram image (placeholder data)
-        self.ax_wavelet = fig.add_subplot(g[2])
-        self.im_wavelet = self.ax_wavelet.imshow(
-            np.zeros((64, N0)), origin="lower", aspect="auto",
-            extent=(0, N0, 1, 250), vmin=-60, vmax=0
-        )
-        self.ax_wavelet.set_ylabel("f [Hz]")
-    
-        # ❹ – normal PSD
-        self.ax_psd    = fig.add_subplot(g[3])
-        self.psd_line, = self.ax_psd.plot([], [], lw=.8)
-        self.ax_psd.set_ylim(-200, 40)
-        self.ax_psd.set_xlim(0, 250)
-        self.ax_psd.set_ylabel("dB")
-        self.ax_psd.set_xlabel("Hz")
-        self.ax_psd.grid(True, ls=":")
-        self.maxhold = None                                 # for max-hold logic
-    
-        # canvas ------------------------------------------------------------------
+
+        fig = Figure(constrained_layout=True, dpi=100)
+        g   = fig.add_gridspec(5, 1, height_ratios=[1, 1, 1, 1, 1])
+
+        self.ax_dt   = fig.add_subplot(g[0])
+        self.ax_time = fig.add_subplot(g[1])
+        self.ax_wav  = fig.add_subplot(g[2])
+        self.ax_sg   = fig.add_subplot(g[3])
+        self.ax_psd  = fig.add_subplot(g[4])
+
+        # aliases so the rest of the file keeps working verbatim
+        self.ax_wavelet  = self.ax_wav
+        self.ax_specgram = self.ax_sg
+
+        self.ax_dt.set_ylabel("Δt [µs]"); self.ax_dt.grid(ls=":")
+        self.ax_time.set_ylabel("V");     self.ax_time.grid(ls=":")
+        self.ax_wav.set_ylabel("f [Hz]")
+        self.ax_sg .set_ylabel("f [Hz]")
+        self.ax_psd.set_ylabel("dB"); self.ax_psd.set_xlabel("Hz"); self.ax_psd.grid(ls=":")
+
+        N0  = 100
+        xs  = np.arange(N0)
+        self.dt_line,    = self.ax_dt.plot(xs, np.zeros(N0), lw=.8)
+        self.time_lines  = [self.ax_time.plot(xs, np.zeros(N0), lw=.8)[0]
+                            for _ in range(16)]
+        self.im_wavelet  = self.ax_wav.imshow(np.zeros((64, N0)), origin="lower",
+                                              aspect="auto", extent=(0, N0, 1, 250),
+                                              vmin=-60, vmax=0)
+        self.im_specgram = self.ax_sg.imshow (np.zeros((64, N0)), origin="lower",
+                                              aspect="auto", extent=(0, N0, 0, 250),
+                                              vmin=-80, vmax=0)
+        self.psd_lines = [self.ax_psd.plot([], [], lw=.8)[0] for _ in range(16)]
+        self.psd_max   = [self.ax_psd.plot([], [], lw=.8, ls="--",
+                             color=self.psd_lines[i].get_color())[0]
+                          for i in range(16)]
+        self.maxhold_data = [None]*16
+
         canvas = FigureCanvasTkAgg(fig, master=col)
-        w      = canvas.get_tk_widget()
-        w.configure(bg=self.BG, highlightthickness=0)
+        w = canvas.get_tk_widget()
         w.grid(row=0, column=0, sticky="nsew")
+        w.configure(bg=self.BG, highlightthickness=0)
         w.bind("<Configure>", self._queue_redraw, add="+")
         self.fig, self.fig_canvas = fig, canvas
+
+        # backgrounds for blit
+        self._bg_dt = self._bg_time = self._bg_wav = self._bg_sg = self._bg_psd = None
+        def _save_bg(evt):
+            self._bg_dt   = canvas.copy_from_bbox(self.ax_dt.bbox)
+            self._bg_time = canvas.copy_from_bbox(self.ax_time.bbox)
+            self._bg_wav  = canvas.copy_from_bbox(self.ax_wav.bbox)
+            self._bg_sg   = canvas.copy_from_bbox(self.ax_sg.bbox)
+            self._bg_psd  = canvas.copy_from_bbox(self.ax_psd.bbox)
+        fig.canvas.mpl_connect("draw_event", _save_bg)
+        fig.canvas.draw()          # first draw → backgrounds cached
     
-        # ────────────────────── ❷ DSP / VIEW CONTROLS ───────────────────────────
+        # ────────── control panel ─────────────────────────────────────
         ctrl = ttk.LabelFrame(col, text="Signal & display controls")
         ctrl.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 6))
-        for c in range(6):
+        for c in range(7):
             ctrl.columnconfigure(c, weight=1)
     
         r = 0
-        # sample-rate -------------------------------------------------------------
+        # Fs & Record
         ttk.Label(ctrl, text="Fs (Hz)").grid(row=r, column=0, sticky="e")
-        self.fs_var = tk.IntVar(value=500)
-        ttk.Spinbox(
-            ctrl, from_=100, to=2000, increment=50,
-            textvariable=self.fs_var, width=6,
-            command=lambda: self._sig_update(sample_rate=self.fs_var.get())
-        ).grid(row=r, column=1, sticky="w")
+        self.fs_var  = tk.StringVar(value="250")
+        ttk.Entry(ctrl, textvariable=self.fs_var, width=8)\
+            .grid(row=r, column=1, sticky="we", padx=2)
     
-        # record duration ---------------------------------------------------------
         ttk.Label(ctrl, text="Record (s)").grid(row=r, column=2, sticky="e")
-        self.dur_var = tk.IntVar(value=8)
-        ttk.Spinbox(
-            ctrl, from_=2, to=30, increment=1,
-            textvariable=self.dur_var, width=4,
-            command=lambda: self._sig_update(buf_secs=self.dur_var.get())
-        ).grid(row=r, column=3, sticky="w")
+        self.dur_var = tk.StringVar(value="4")
+        ttk.Entry(ctrl, textvariable=self.dur_var, width=6)\
+            .grid(row=r, column=3, sticky="we", padx=2)
     
-        # time-domain limits ------------------------------------------------------
-        ttk.Label(ctrl, text="Amplitude ±V").grid(row=r, column=4, sticky="e")
-        self.lim_lo = tk.DoubleVar(value=-5)
-        self.lim_hi = tk.DoubleVar(value=5)
-        lo = ttk.Scale(ctrl, from_=-5, to=5, variable=self.lim_lo,
-                       command=lambda *_: self._enforce_limits(lo=True))
-        hi = ttk.Scale(ctrl, from_=-5, to=5, variable=self.lim_hi,
-                       command=lambda *_: self._enforce_limits(lo=False))
-        lo.grid(row=r, column=5, sticky="we", padx=2)
-        hi.grid(row=r, column=5, sticky="we", padx=2)
-    
-        # NFFT --------------------------------------------------------------------
+        ttk.Button(ctrl, text="Apply", command=self._apply_buf_settings)\
+            .grid(row=r, column=4, columnspan=3, sticky="we", padx=4)
         r += 1
+    
+        # amplitude slider (symmetric ±)
+        ttk.Label(ctrl, text="Amplitude ±V").grid(row=r, column=0, sticky="e")
+        self.amp_var = tk.DoubleVar(value=5.0)
+        tk.Scale(ctrl, from_=1e-6, to=5.0, resolution=1e-4,
+                 orient="horizontal", variable=self.amp_var,
+                 command=lambda v: (self.amp_var.set(float(v)),
+                                    self._update_amp()))\
+            .grid(row=r, column=1, columnspan=4, sticky="we", padx=2)
+        ttk.Entry(ctrl, textvariable=self.amp_var, width=8)\
+            .grid(row=r, column=5, sticky="we", padx=2)
+        r += 1
+    
+        # NFFT
         ttk.Label(ctrl, text="NFFT").grid(row=r, column=0, sticky="e")
         self.nfft_var = tk.IntVar(value=512)
         self.nfft_sld = ttk.Scale(
             ctrl, from_=32, to=8192, variable=self.nfft_var,
-            command=lambda v: self._sig_update(fft_pts=int(float(v)))
-        )
-        self.nfft_sld.grid(row=r, column=1, columnspan=2, sticky="we", padx=2)
-    
-        # Chebyshev attenuation ---------------------------------------------------
-        ttk.Label(ctrl, text="Cheb atten (dB)").grid(row=r, column=3, sticky="e")
-        self.cheb_var = tk.DoubleVar(value=100)
-        ttk.Scale(
-            ctrl, from_=40, to=140,
-            variable=self.cheb_var,
-            command=lambda v: self._sig_update(cheb_atten_db=float(v))
-        ).grid(row=r, column=4, columnspan=2, sticky="we", padx=2)
-    
-        # PSD limits --------------------------------------------------------------
+            command=lambda v: (self.nfft_var.set(int(float(v))),
+                               self._sig_update(fft_pts=int(float(v)))))
+        self.nfft_sld.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
         r += 1
-        ttk.Label(ctrl, text="PSD limits (dB)").grid(row=r, column=0, sticky="e")
-        self.psd_lo = tk.DoubleVar(value=-200)
-        self.psd_hi = tk.DoubleVar(value=40)
-        plo = ttk.Scale(ctrl, from_=-200, to=40, variable=self.psd_lo,
-                        command=lambda *_: self._enforce_psd(lo=True))
-        phi = ttk.Scale(ctrl, from_=-200, to=40, variable=self.psd_hi,
-                        command=lambda *_: self._enforce_psd(lo=False))
-        plo.grid(row=r, column=1, columnspan=2, sticky="we", padx=2)
-        phi.grid(row=r, column=3, columnspan=2, sticky="we", padx=2)
     
-        # max-hold ---------------------------------------------------------------
+        # Chebyshev attenuation
+        ttk.Label(ctrl, text="Cheb atten (dB)").grid(row=r, column=0, sticky="e")
+        self.cheb_var = tk.DoubleVar(value=100.0)
+        ttk.Scale(ctrl, from_=40, to=140, variable=self.cheb_var,
+                  command=lambda v: (self.cheb_var.set(float(v)),
+                                     self._sig_update(cheb_atten_db=float(v))))\
+            .grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
+        ttk.Entry(ctrl, textvariable=self.cheb_var, width=6)\
+            .grid(row=r, column=4, sticky="we", padx=2)
+        r += 1
+    
+        # PSD limits
+        ttk.Label(ctrl, text="PSD min (dB)").grid(row=r, column=0, sticky="e")
+        self.psd_lo = tk.DoubleVar(value=-200)
+        tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
+                 variable=self.psd_lo,
+                 command=lambda v: (self.psd_lo.set(float(v)),
+                                    self._enforce_psd(lo=True)))\
+            .grid(row=r, column=1, sticky="we", padx=2)
+        ttk.Entry(ctrl, textvariable=self.psd_lo, width=6)\
+            .grid(row=r, column=2, sticky="we", padx=2)
+    
+        ttk.Label(ctrl, text="PSD max (dB)").grid(row=r, column=3, sticky="e")
+        self.psd_hi = tk.DoubleVar(value=40)
+        tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
+                 variable=self.psd_hi,
+                 command=lambda v: (self.psd_hi.set(float(v)),
+                                    self._enforce_psd(lo=False)))\
+            .grid(row=r, column=4, sticky="we", padx=2)
+        ttk.Entry(ctrl, textvariable=self.psd_hi, width=6)\
+            .grid(row=r, column=5, sticky="we", padx=2)
+    
         self.maxhold_on = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ctrl, text="Max-hold", variable=self.maxhold_on
-                        ).grid(row=r, column=5, sticky="w")
-        ttk.Button(ctrl, text="Reset",
-                   command=self._reset_maxhold
-                   ).grid(row=r, column=5, sticky="e", padx=4)
+        ttk.Checkbutton(ctrl, text="Max-hold", variable=self.maxhold_on)\
+            .grid(row=r, column=6, sticky="w")
+        ttk.Button(ctrl, text="Reset", command=self._reset_maxhold)\
+            .grid(row=r, column=6, sticky="e", padx=4)
+
+
 
         
     # live SigConfig update and safety-clamped NFFT
     def _sig_update(self, **kwargs):
-        if hasattr(self, "sig_cfg"):         # after SignalWorker exists
+        """Sync SigConfig with worker, and clamp NFFT ≤ buffer length."""
+        if hasattr(self, "sig"):
+            self.sig.update_cfg(**kwargs)
+        if hasattr(self, "sig_cfg"):
             self.sig_cfg.__dict__.update(kwargs)
-        # keep NFFT ≤ total samples
-        total = self.sig_cfg.sample_rate * self.sig_cfg.buf_secs
+
+        total    = self.sig_cfg.sample_rate * self.sig_cfg.buf_secs
         max_pow2 = 1 << (total.bit_length() - 1)
-        self.nfft_var.set(min(max_pow2, max(32, self.nfft_var.get())))
-        self.nfft_sld.configure(to=max_pow2)
+        if self.nfft_var.get() > max_pow2:
+            self.nfft_var.set(max_pow2)
+        if hasattr(self, "nfft_sld"):
+            self.nfft_sld.configure(to=max_pow2)
+        
+    # update amplitude limits (symmetric ±)
+    def _update_amp(self):
+        a = max(1e-6, min(5.0, float(self.amp_var.get())))
+        self.amp_var.set(a)
+        self.ax_time.set_ylim(-a, a)
+
+        
+    # ── apply Fs / Record settings --------------------------------------
+    def _apply_buf_settings(self):
+        try:
+            new_fs  = int(float(self.fs_var.get()))
+            new_dur = int(float(self.dur_var.get()))
+            if new_fs <= 0 or new_dur <= 0:
+                raise ValueError
+        except ValueError:
+            return
+    
+        # 1 ─ kill the old worker
+        if hasattr(self, "sig"):
+            self.sig.stop()
+    
+        # 2 ─ build a *fresh* SigConfig and worker with the new numbers
+        self.sig_cfg = SigConfig(sample_rate=new_fs,
+                                 buf_secs   =new_dur,
+                                 n_ch       =16)
+        self.sig = SignalWorker(self.sig_cfg,
+                                data_port=int(self.data_port_var.get()))
+        self.sig.start()
+    
+        # 3 ─ update the GUI axes to 0…Record-s
+        for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
+            ax.set_xlim(0, new_dur)
+    
+        # 4 ─ force redraw → caches new blit backgrounds
+        self.fig_canvas.draw_idle()
+
+
     
     def _enforce_limits(self, lo=True):
         self.ax_time.set_ylim(self.lim_lo.get(), self.lim_hi.get())
@@ -285,7 +356,7 @@ class App(tk.Tk):
 
     
     def _reset_maxhold(self):
-        self.maxhold = None      # you’ll use this in the FFT draw loop
+        self.maxhold_data = [None] * 16
 
 
 
@@ -335,16 +406,19 @@ class App(tk.Tk):
         
     # ── refresh COM-port list ───────────────────────────────────────────
     def _refresh_ports(self):
-        plist = SerialManager.ports()
-        self.port_cb["values"] = plist
-
-        if plist:                              # at least one port detected
-            # show first entry in the field *and* make it the selected item
+        plist = SerialManager.ports()          # fresh scan every call
+        self.port_cb["values"] = plist or ("",)
+    
+        # if current selection vanished → pick the first detected port
+        if plist and self.port_var.get() not in plist:
             self.port_var.set(plist[0])
             try:
-                self.port_cb.current(0)        # visual selection in the list
+                self.port_cb.current(0)
             except tk.TclError:
-                pass                           # ignore if list just changed
+                pass                           # widget may be disabled
+    
+        # ←————  schedule the next scan!
+        self.after(1000, self._refresh_ports)
 
 
 
@@ -441,7 +515,6 @@ class App(tk.Tk):
 
         # initialise port list & schedule refresh
         self._refresh_ports()
-        self.after(1000, self._refresh_ports)
 
 
 
@@ -650,44 +723,108 @@ class App(tk.Tk):
 
     # ── animate plots ----------------------------------------------------
     def _animate_plots(self):
-        snap = self.sig.snapshot()          # None until buffer fills
+        # stay idle until UDP really connected
+        if not (getattr(self, "udp", None) and self.udp.board_ip):
+            self.after(100, self._animate_plots)
+            return
+    
+        snap = self.sig.snapshot()
         if snap is None:
-            self.after(16, self._animate_plots); return
+            self.after(16, self._animate_plots)
+            return
     
-        data = snap["data"]                 # (N, 16) float32
-        n    = data.shape[0]
+        data   = snap["data"]                 # (N,16)
+        npts   = data.shape[0]
+        fs_val = self.sig_cfg.sample_rate
+        self._prev_fs = getattr(self, "_prev_fs", fs_val)
     
-        # resize X-axis if buffer length changed
-        if n != self.time_lines[0].get_xdata().size:
-            xs = np.arange(n)
-            for ln in self.time_lines:
-                ln.set_xdata(xs)
+        # x-vector in **seconds**
+        xs_sec = np.arange(npts) / fs_val
     
-        # time-domain update
+        # rebuild line objects if length OR Fs changed -------------------
+        need_rebuild = (xs_sec.size != self.time_lines[0].get_xdata().size) \
+                       or (fs_val != self._prev_fs)
+    
+        if need_rebuild:
+            for ln in (*self.time_lines, self.dt_line):
+                ln.set_xdata(xs_sec)
+                ln.set_ydata(np.zeros_like(xs_sec))
+            for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
+                ax.set_xlim(0, xs_sec[-1])
+            self.fig_canvas.draw()            # new blit backgrounds
+            self._prev_fs = fs_val            # store for next call
+    
+        # Δt -----------------------------------------------------------------
+        if "time" in snap:
+            t_raw = snap["time"].astype(np.int64)
+            self.dt_line.set_ydata(np.diff(t_raw, prepend=t_raw[0]) * 8)
+    
+        # time-domain --------------------------------------------------------
         for ln, ch in zip(self.time_lines, data.T):
             ln.set_ydata(ch)
     
-        # ------------ PSD (channel-0 for now) -------------------------------
-        fft_pts = int(self.nfft_var.get())
-        win     = np.chebwin(fft_pts, at=self.cheb_var.get())
-        seg     = data[-fft_pts:, 0] * win
-        spec    = np.fft.rfft(seg)
-        psd     = 20*np.log10(np.abs(spec) + 1e-15)
+        # spectrogram (seconds on x-axis) ------------------------------------
+        f_s, t_s, Sxx = sps.spectrogram(data[:, 0], fs=fs_val,
+                                        window="hann", nperseg=256, noverlap=128)
+        self.im_specgram.set_data(10*np.log10(Sxx + 1e-12))
+        # extent: (t_left, t_right, f_low, f_high)
+        self.im_specgram.set_extent((0, xs_sec[-1], f_s[0], f_s[-1]))
     
-        if self.maxhold_on.get():
-            self.maxhold = psd if self.maxhold is None else np.maximum(psd, self.maxhold)
-            psd = self.maxhold
-        else:
-            self.maxhold = None
+        # PSD ----------------------------------------------------------------
+        nfft  = int(self.nfft_var.get())
+        win   = 1.0
+        freqs = np.fft.rfftfreq(nfft, d=1/fs_val)
     
-        freqs = np.fft.rfftfreq(fft_pts, d=1/self.fs_var.get())
-        self.psd_line.set_data(freqs, psd)
-        self.ax_psd.set_xlim(0, self.fs_var.get()/2)
-        self.ax_psd.set_ylim(self.psd_lo.get(), self.psd_hi.get())
+        for idx in range(16):
+            seg = data[-nfft:, idx] * win
+            psd = 20*np.log10(np.abs(np.fft.rfft(seg)) + 1e-15)
+            self.psd_lines[idx].set_data(freqs, psd)
     
-        # redraw & schedule next
-        self.fig_canvas.draw_idle()
+            if self.maxhold_on.get():
+                mh = self.maxhold_data[idx]
+                mh = psd if mh is None else np.maximum(mh, psd)
+                self.maxhold_data[idx] = mh
+                self.psd_max[idx].set_data(freqs, mh)
+                self.psd_max[idx].set_visible(True)
+            else:
+                self.psd_max[idx].set_visible(False)
+                self.maxhold_data[idx] = None
+        
+        # keep power-spectrum axis in sync with Fs
+        self.ax_psd.set_xlim(0, fs_val / 2)
+    
+        # -------- fast blit refresh ---------------------------------------
+        c = self.fig_canvas
+        if self._bg_dt is not None:
+            c.restore_region(self._bg_dt)
+            self.ax_dt.draw_artist(self.dt_line)
+            c.blit(self.ax_dt.bbox)
+    
+        if self._bg_time is not None:
+            c.restore_region(self._bg_time)
+            for ln in self.time_lines:
+                self.ax_time.draw_artist(ln)
+            c.blit(self.ax_time.bbox)
+    
+        if self._bg_sg is not None:
+            c.restore_region(self._bg_sg)
+            self.ax_sg.draw_artist(self.im_specgram)
+            c.blit(self.ax_sg.bbox)
+    
+        if self._bg_psd is not None:
+            c.restore_region(self._bg_psd)
+            for ln in (*self.psd_lines, *self.psd_max):
+                if ln.get_visible():
+                    self.ax_psd.draw_artist(ln)
+            c.blit(self.ax_psd.bbox)
+    
+        c.flush_events()
         self.after(16, self._animate_plots)
+
+
+
+
+
 
     # ── queue → console pump ──────────────────────────────────────────
     def _poll_queues(self):
@@ -721,12 +858,27 @@ class App(tk.Tk):
 
 
     # ── shutdown ---------------------------------------------------------
+    # ── shutdown / window-close handler ─────────────────────────────────
     def _on_close(self):
+        """
+        Called by the window manager (the “X” button).
+        Sets stop flags, stops UDP thread if running, then destroys the GUI
+        after 300 ms so background threads/processes can exit cleanly.
+        """
+        # tell timers & workers to stop
         self.stop_evt.set()
-        if self.udp:           # ← NEW
-            self.udp.stop()
-        # wait a short moment to let threads exit gracefully
+    
+        # stop UDP manager (if it exists and is connected)
+        if getattr(self, "udp", None):
+            try:
+                self.udp.stop()
+            except Exception:
+                pass
+    
+        # destroy window after a short grace period
         self.after(300, self.destroy)
+
+
 
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
