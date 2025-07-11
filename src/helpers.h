@@ -26,6 +26,7 @@ extern volatile bool continuousReading;
 // Full ADS1299 reset
 void ads1299_full_reset();
 void BCI_preset();
+void continious_mode_start_stop(uint8_t on_off);
 
 
 

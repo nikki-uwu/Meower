@@ -1,6 +1,71 @@
 #include "helpers.h"
 
-extern Debugger Debug; 
+extern Debugger Debug;
+
+extern volatile uint32_t g_selectSamplingFreq;
+extern volatile bool continuousReading;
+
+// Setting start signal for contious mode. Ether ON or OFF
+void continious_mode_start_stop(uint8_t on_off)
+{
+    if (on_off == HIGH) // Start continuous mode
+    {
+        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
+        spiTransaction_OFF();
+        spiTransaction_ON(SPI_COMMAND_CLOCK);
+
+        // Before any start of the continious we must check board Sample Rate
+        // which is at Config 1 which is to read is 0x21
+        uint8_t tx_mex[3] = {0x21, 0x00, 0x00};
+        uint8_t rx_mes[3] = {0};
+        xfer('M', 3u, tx_mex, rx_mes);
+
+        // Store Sampling Rate into global variable for filters
+        switch (rx_mes[2] & 0x07)
+        {
+            case 6: g_selectSamplingFreq = 0; break; //  250 Hz
+            case 5: g_selectSamplingFreq = 1; break; //  500 Hz
+            case 4: g_selectSamplingFreq = 2; break; // 1000 Hz
+            case 3: g_selectSamplingFreq = 3; break; // 2000 Hz
+            case 2: g_selectSamplingFreq = 4; break; // 4000 Hz
+        }
+
+        // Turn ON start signal (pull it UP)
+        digitalWrite(PIN_START, on_off);
+
+        // Prepare RDATAC message and empty holder for receiving
+        uint8_t RDATAC_mes = 0x10;
+        xfer('B', 1u, &RDATAC_mes, rx_mes); // Send RDATAC
+
+        // Back to fast clock
+        spiTransaction_OFF();
+        spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
+
+        // Set continuous mode flag to True
+        continuousReading = true;
+    }
+    else // Otherwise stop
+    {
+        // Prepare SDATAC message and empty holder for receiving
+        uint8_t SDATAC_mes = 0x11;
+        uint8_t rx_mes     = 0x00; // just empty message, we do need any response here
+
+        // After SDATAC message we must wait 4 clocks, but since we have a small
+        // delay before and after reading in xfer function we can ignore it
+        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
+        spiTransaction_OFF();
+        spiTransaction_ON(SPI_COMMAND_CLOCK);
+        xfer('B', 1u, &SDATAC_mes, &rx_mes);
+        spiTransaction_OFF();
+        spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
+
+        // Turn OFF start signal (pull it DOWN)
+        digitalWrite(PIN_START, on_off);
+
+        // Set continuous mode flag to False
+        continuousReading = false;
+    }
+}
 
 void BootCheck::init()
 {
@@ -55,7 +120,7 @@ void BootCheck::init()
 // BootCheck::update  -- call once per loop()
 void BootCheck::update()
 {
-    static bool done = false;
+    bool done = false;
     if (done || millis() < 1000) return;
 
     if (prefs.begin("bootlog", false))
@@ -99,9 +164,7 @@ void ads1299_full_reset()
     // We will use digitalWrite instead of WRITE_PERI_REG here since timings are not important.
 
     // Make sure continuous Mode is OFF, because we are doing full reset
-    // ALSO, we do not care about proper procidure with messages, since we are pulling RESET and POWER DOWN pins LOW,
-    // fully reseting ADCs. so we can just set continuous mode to false
-    continuousReading = false; 
+    continious_mode_start_stop(LOW);
 
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
     spiTransaction_OFF();                 // stop SPI
@@ -158,8 +221,8 @@ void ads1299_full_reset()
     //              X11YZMKR
     // Config_3 = 0b11100000; 0xE0
     {
-        static const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xE0};
-        uint8_t              rx_mes[3u]        = {0}; // just empty message, we do need any response here
+        const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xE0};
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
         xfer('B', 3u, Master_conf_3, rx_mes);
     }
 
@@ -175,17 +238,17 @@ void ads1299_full_reset()
     // Slave_conf_1  = 0b10010101; # Daisy ON, Clock OUT OFF, 500 SPS
     {
         // Master config
-        static const uint8_t Master_conf_1[3u] = {0x41, 0x00, 0xB6};
-        uint8_t              rx_mes[3u]        = {0}; // just empty message, we do need any response here
+        const uint8_t Master_conf_1[3u] = {0x41, 0x00, 0xB6};
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
         xfer('M', 3u, Master_conf_1, rx_mes);
 
         // Slave config
-        static const uint8_t Slave_conf_1[3u] = {0x41, 0x00, 0x96};
+        const uint8_t Slave_conf_1[3u] = {0x41, 0x00, 0x96};
         xfer('S', 3u, Slave_conf_1, rx_mes);
 
         // Set reference signal to base again, since slave was in what ever state so
         // after this config 3 messages they will be in similar modes again
-        static const uint8_t Config_3[3u] = {0x43, 0x00, 0xE0};
+        const uint8_t Config_3[3u] = {0x43, 0x00, 0xE0};
         xfer('B', 3u, Config_3, rx_mes);
     }
 
@@ -201,8 +264,8 @@ void ads1299_full_reset()
     //              11010101 Signal is gen internally, amplitude twice more than usual, pulses with 1 s period
     // Config_2 = 0b11010100
     {
-        static const uint8_t Config_2[3u] = {0x42, 0x00, 0xD4};
-        uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
+        const uint8_t Config_2[3u]      = {0x42, 0x00, 0xD4};
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
         xfer('B', 3u, Config_2, rx_mes);
     }
 
@@ -216,8 +279,8 @@ void ads1299_full_reset()
     // We have 8 channels in each ADC and we assign default settings to all of them in pairs
     for (uint8_t ind = 0; ind < 8u; ind++)
     {
-        static const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x05 };
-        uint8_t              rx_mes[3u]          = {0}; // just empty message, we do need any response here
+        const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x05 };
+        uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
         xfer('B', 3u, Config_Channels, rx_mes);
 
         // wait for 1 ms
@@ -231,6 +294,9 @@ void ads1299_full_reset()
 
 void BCI_preset()
 {
+    // Make sure continuous Mode is OFF, because we are doing full reset
+    continious_mode_start_stop(LOW);
+
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
     spiTransaction_OFF();                 // stop SPI
     spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
@@ -245,8 +311,8 @@ void BCI_preset()
     // We have 8 channels in each ADC and we assign default settings to all of them in pairs
     for (uint8_t ind = 0; ind < 8u; ind++)
     {
-        static const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x28 };
-        uint8_t              rx_mes[3u]          = {0}; // just empty message, we do need any response here
+        const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x028 };
+        uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
         xfer('B', 3u, Config_Channels, rx_mes);
 
         // wait for 1 ms
@@ -263,11 +329,11 @@ void BCI_preset()
     //              X11YZMKR
     // Config_3 = 0b11100000; 0xE0
     {
-        static const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xEC};
+        const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xEC};
         uint8_t              rx_mes[3u]        = {0}; // just empty message, we do need any response here
         xfer('M', 3u, Master_conf_3, rx_mes);
 
-        static const uint8_t Slave_conf_3[3u] = {0x43, 0x00, 0xE8};
+        const uint8_t Slave_conf_3[3u] = {0x43, 0x00, 0xE8};
         xfer('S', 3u, Slave_conf_3, rx_mes);
     }
 

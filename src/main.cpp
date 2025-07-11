@@ -55,7 +55,7 @@ volatile uint32_t g_selectNetworkFreq = 0;
 // Select for current working sampling frequency. It's needed for filters to set proper coefficients
 // [250 500 1000 2000 4000] Hz
 // [  0   1    2    3    4] select number
-static volatile uint32_t g_selectSamplingFreq = 0; // Sampling rate selector index
+volatile uint32_t g_selectSamplingFreq = 0; // Sampling rate selector index
 
 // Select cutOff frequency for DC filter.
 // So, just in case, 0.5 Hz second order IIR for DC falls apart even with 32 bit coefficients and 32 bit signal.
@@ -98,68 +98,6 @@ volatile bool g_filtersEnabled = true;
 // Helpers
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-// Setting start signal for contious mode. Ether ON or OFF
-void continious_mode_start_stop(uint8_t on_off)
-{
-    if (on_off == HIGH) // Start continuous mode
-    {
-        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_COMMAND_CLOCK);
-
-        // Before any start of the continious we must check board Sample Rate
-        // which is at Config 1 which is to read is 0x21
-        uint8_t tx_mex[3] = {0x21, 0x00, 0x00};
-        uint8_t rx_mes[3] = {0};
-        xfer('M', 3u, tx_mex, rx_mes);
-
-        // Store Sampling Rate into global variable for filters
-        switch (rx_mes[2] & 0x07)
-        {
-            case 6: g_selectSamplingFreq = 0; break; //  250 Hz
-            case 5: g_selectSamplingFreq = 1; break; //  500 Hz
-            case 4: g_selectSamplingFreq = 2; break; // 1000 Hz
-            case 3: g_selectSamplingFreq = 3; break; // 2000 Hz
-            case 2: g_selectSamplingFreq = 4; break; // 4000 Hz
-        }
-
-        // Turn ON start signal (pull it UP)
-        digitalWrite(PIN_START, on_off);
-
-        // Prepare RDATAC message and empty holder for receiving
-        uint8_t RDATAC_mes = 0x10;
-        xfer('B', 1u, &RDATAC_mes, rx_mes); // Send RDATAC
-
-        // Back to fast clock
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
-
-        // Set continuous mode flag to True
-        continuousReading = true;
-    }
-    else // Otherwise stop
-    {
-        // Prepare SDATAC message and empty holder for receiving
-        uint8_t SDATAC_mes = 0x11;
-        uint8_t rx_mes     = 0x00; // just empty message, we do need any response here
-
-        // After SDATAC message we must wait 4 clocks, but since we have a small
-        // delay before and after reading in xfer function we can ignore it
-        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_COMMAND_CLOCK);
-        xfer('B', 1u, &SDATAC_mes, &rx_mes);
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
-
-        // Turn OFF start signal (pull it DOWN)
-        digitalWrite(PIN_START, on_off);
-
-        // Set continuous mode flag to False
-        continuousReading = false;
-    }
-}
-
 // Reads ONE complete command datagram from the queue.
 // Returns the byte count (0 if none).  Mirrors the old signature so
 // message_lib.cpp stays untouched.
@@ -526,6 +464,12 @@ void setup()
     // Right at the end we have to reset ADC so it's at default state.
     ads1299_full_reset();
 
+    // Set normal BCI mode
+    if (BCI_MODE)
+    {
+        BCI_preset();
+    }
+
     // FreeRTOS resources
     // 5-slot queue that holds exactly 5 complete UDP datagrams.
     //
@@ -585,12 +529,6 @@ void setup()
     attachInterrupt(PIN_DRDY,  // GPIO number
                     drdy_isr,  // ISR function (in IRAM)
                     FALLING ); // trigger on falling edge
-
-    // Set normal BCI mode
-    if (BCI_MODE)
-    {
-        BCI_preset();
-    }
 
     // Start ADC so it tries to send data right away without any other need so config or what ever
     // Signal will be square wave with 1s period
