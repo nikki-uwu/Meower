@@ -10,6 +10,7 @@ Revision
 • Debounce handler is appended (add="+") so Matplotlib's own resize logic
   remains active; we only throttle the expensive draw call.
 • **Fixed blitting**: Proper implementation with animated artists and single figure background
+• **Fixed duration issue**: X-axis now uses expected duration, not snapshot size
 """
 
 import sys
@@ -209,9 +210,9 @@ class App(tk.Tk):
         # USE SINGLE FIGURE BACKGROUND BUFFER
         self._bg_cache = None
         def _save_bg(evt):
-            print(f"[DEBUG] _save_bg called - saving single figure background")
+            print(f"[BLIT_DEBUG] _save_bg called - saving single figure background")
             self._bg_cache = canvas.copy_from_bbox(self.fig.bbox)
-            print(f"[DEBUG] Background saved: cache={self._bg_cache is not None}")
+            print(f"[BLIT_DEBUG] Background saved: cache={self._bg_cache is not None}")
         fig.canvas.mpl_connect("draw_event", _save_bg)
         fig.canvas.draw()          # first draw → backgrounds cached
     
@@ -231,8 +232,9 @@ class App(tk.Tk):
     
         ttk.Label(ctrl, text="Record (s)").grid(row=r, column=2, sticky="e")
         self.dur_var = tk.StringVar(value="4")
-        dur_entry = ttk.Entry(ctrl, textvariable=self.dur_var, width=6)
-        dur_entry.grid(row=r, column=3, sticky="we", padx=2)
+        self.dur_entry = ttk.Entry(ctrl, textvariable=self.dur_var, width=6)
+        self.dur_entry.grid(row=r, column=3, sticky="we", padx=2)
+        self.dur_entry.insert(0, "4")  # Set initial display value
         ttk.Button(ctrl, text="Apply", command=self._apply_buf_settings).grid(row=r, column=4, padx=4)
         r += 1
     
@@ -316,19 +318,21 @@ class App(tk.Tk):
             .grid(row=r, column=6, sticky="e", padx=4)
 
     def _on_maxhold_toggle(self):
-        print(f"[DEBUG] Max-hold toggled: {self.maxhold_on.get()}")
+        print(f"[BLIT_DEBUG] Max-hold toggled: {self.maxhold_on.get()}")
         # Always update visibility immediately
         for idx in range(16):
             self.psd_max[idx].set_visible(self.maxhold_on.get())
+        print(f"[BLIT_DEBUG] Calling draw() due to max-hold toggle")
         self.ax_psd.figure.canvas.draw()
         self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
+        print(f"[BLIT_DEBUG] Background cache updated after max-hold toggle: {self._bg_cache is not None}")
 
 
         
     # live SigConfig update and safety-clamped NFFT
     def _sig_update(self, **kwargs):
         """Sync SigConfig with worker, and clamp NFFT ≤ buffer length."""
-        print(f"[DEBUG] _sig_update called with: {kwargs}")
+        print(f"[BLIT_DEBUG] _sig_update called with: {kwargs}")
         
         if hasattr(self, "sig") and self.sig:
             self.sig.update_cfg(**kwargs)
@@ -346,7 +350,7 @@ class App(tk.Tk):
                 
         # Handle other updates that need immediate visual feedback
         if 'cheb_atten_db' in kwargs:
-            print(f"[DEBUG] Chebyshev attenuation changed to: {kwargs['cheb_atten_db']}")
+            print(f"[BLIT_DEBUG] Chebyshev attenuation changed to: {kwargs['cheb_atten_db']}")
             # This affects the PSD window function - we'll see it in next frame
         
     # update amplitude limits (symmetric ±)
@@ -362,12 +366,13 @@ class App(tk.Tk):
         linear_val = 10 ** float(log_val)
         self.amp_var.set(linear_val)
         self.ax_time.set_ylim(-linear_val, linear_val)
-        print(f"[DEBUG] Amplitude slider: ±{linear_val:.6f}V, ylim set to ({-linear_val:.6f}, {linear_val:.6f})")
+        print(f"[BLIT_DEBUG] Amplitude slider: ±{linear_val:.6f}V, ylim set to ({-linear_val:.6f}, {linear_val:.6f})")
     
         # Force immediate redraw of the figure and update background
+        print(f"[BLIT_DEBUG] Calling draw() due to amplitude change")
         self.fig_canvas.draw()
         self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
-        print(f"[DEBUG] Figure background updated after amplitude change")
+        print(f"[BLIT_DEBUG] Background cache updated after amplitude change: {self._bg_cache is not None}")
             
     def _update_amp_from_entry(self, event=None):
         """Update log slider when entry is changed"""
@@ -378,31 +383,49 @@ class App(tk.Tk):
             self.amp_log_var.set(np.log10(val))
             self.ax_time.set_ylim(-val, val)
     
+            print(f"[BLIT_DEBUG] Calling draw() due to amplitude entry change")
             self.fig_canvas.draw()
             self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
-            print(f"[DEBUG] Figure background updated (entry)")
+            print(f"[BLIT_DEBUG] Background cache updated after amplitude entry change: {self._bg_cache is not None}")
         except ValueError:
             pass
 
         
     # ── apply Fs / Record settings --------------------------------------
     def _apply_buf_settings(self):
-        print(f"[DEBUG] _apply_buf_settings called")
+        print(f"[DURATION_TRACE] === APPLY BUTTON CLICKED ===")
+        
+        # Enable debug mode for the next few animation cycles
+        self._animate_debug_mode = True
+        
+        # Read directly from Entry widget instead of StringVar
+        dur_entry_text = self.dur_entry.get()
+        fs_entry_text = self.fs_var.get()  # fs still works with StringVar
+        
+        print(f"[DURATION_TRACE] Step 1: Raw value from dur_entry.get() = '{dur_entry_text}'")
+        print(f"[DURATION_TRACE] Step 1b: Raw value from dur_var.get() = '{self.dur_var.get()}'")
+        print(f"[DURATION_TRACE] Step 2: Raw value from fs_var.get() = '{fs_entry_text}'")
+        
         try:
-            new_fs  = int(float(self.fs_var.get()))
-            print(f"[DEBUG] dur_var.get() raw = {self.dur_var.get()}")
-            new_dur = int(float(self.dur_var.get()))
+            new_fs  = int(float(fs_entry_text))
+            print(f"[DURATION_TRACE] Step 3: Parsed new_fs = {new_fs}")
+            new_dur = int(float(dur_entry_text))
+            print(f"[DURATION_TRACE] Step 4: Parsed new_dur = {new_dur}")
             if new_fs <= 0 or new_dur <= 0:
                 raise ValueError
         except ValueError:
-            print(f"[DEBUG] Invalid values, returning")
+            print(f"[DURATION_TRACE] Step 5: PARSE ERROR - Invalid values, returning")
             return
     
-        print(f"[DEBUG] New settings: fs={new_fs}, dur={new_dur}")
+        print(f"[DURATION_TRACE] Step 6: Validation passed - fs={new_fs}, dur={new_dur}")
+        
+        # Update the StringVar to match what user actually entered
+        self.dur_var.set(str(new_dur))
+        print(f"[DURATION_TRACE] Step 6b: Updated dur_var to '{self.dur_var.get()}'")
         
         # 1 ─ Pause data reception and update buffer without killing worker
         if self.sig:
-            print(f"[DEBUG] Pausing signal worker for buffer update")
+            print(f"[DURATION_TRACE] Step 7: Pausing signal worker for buffer update")
             # Tell signal worker to pause reception
             self.sig.pause_reception = True
             time.sleep(0.1)  # Give time for current packet processing to finish
@@ -420,22 +443,24 @@ class App(tk.Tk):
                 self.sig._udp_sock.settimeout(0.1)  # Restore timeout
             
             # Update configuration
-            print(f"[DEBUG] Updating signal configuration")
+            print(f"[DURATION_TRACE] Step 8: Updating signal configuration")
+            print(f"[DURATION_TRACE] Step 8a: Before update - sig_cfg.buf_secs = {self.sig_cfg.buf_secs}")
             self.sig_cfg.sample_rate = new_fs
             self.sig_cfg.buf_secs = new_dur
+            print(f"[DURATION_TRACE] Step 8b: After update - sig_cfg.buf_secs = {self.sig_cfg.buf_secs}")
             self.sig.update_cfg(sample_rate=new_fs, buf_secs=new_dur)
             
             # Clear the buffer and resize
-            print(f"[DEBUG] Resizing buffer")
+            print(f"[DURATION_TRACE] Step 9: Resizing buffer")
             self.sig._buf = np.zeros((new_fs * new_dur, 16), dtype=np.float32)
             self.sig._ptr = 0
             
             # Resume reception
             self.sig.pause_reception = False
-            print(f"[DEBUG] Resumed signal reception")
+            print(f"[DURATION_TRACE] Step 10: Resumed signal reception")
         else:
             # No existing worker, create new one
-            print(f"[DEBUG] Creating new signal worker")
+            print(f"[DURATION_TRACE] Step 11: Creating new signal worker")
             self.sig_cfg = SigConfig(sample_rate=new_fs,
                                      buf_secs=new_dur,
                                      n_ch=16)
@@ -444,7 +469,8 @@ class App(tk.Tk):
             self.sig.start()
     
         # 3 ─ Clear all artists from axes
-        print(f"[DEBUG] Clearing all artists")
+        print(f"[DURATION_TRACE] Step 12: Clearing all artists")
+        print(f"[BLIT_DEBUG] Clearing axes - this will invalidate background cache")
         self.ax_dt.clear()
         self.ax_time.clear()
         self.ax_wav.clear()
@@ -466,6 +492,9 @@ class App(tk.Tk):
         # 5 ─ Recreate all line objects and images with proper X-axis in seconds
         N0 = int(new_dur * new_fs)
         xs_sec = np.arange(N0) / new_fs  # X-axis in seconds
+        print(f"[DURATION_TRACE] Step 13: Creating time axis xs_sec with {N0} points over {new_dur} seconds")
+        print(f"[DURATION_TRACE] Step 13a: xs_sec ranges from {xs_sec[0]} to {xs_sec[-1]}")
+        
         self.dt_line,    = self.ax_dt.plot(xs_sec, np.zeros(N0), lw=.8)
         self.time_lines  = [self.ax_time.plot(xs_sec, np.zeros(N0), lw=.8)[0]
                             for _ in range(16)]
@@ -492,10 +521,12 @@ class App(tk.Tk):
             line.set_animated(True)
         
         # 6 ─ Update the GUI axes to 0…Record-s and force proper limits
-        print(f"[DEBUG] Setting axes xlim to 0-{new_dur} seconds")
+        print(f"[DURATION_TRACE] Step 14: Setting axes xlim to 0-{new_dur} seconds")
         for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
+            print(f"[DURATION_TRACE] Step 14a: Setting {ax} xlim to (0, {new_dur})")
             ax.set_xlim(0, new_dur)
             ax.set_xlabel("Time (s)")  # Make it clear it's in seconds
+            print(f"[DURATION_TRACE] Step 14b: After set_xlim, {ax}.get_xlim() = {ax.get_xlim()}")
         
         # Update NFFT slider maximum based on new buffer size
         total_samples = new_fs * new_dur
@@ -508,21 +539,25 @@ class App(tk.Tk):
             self.nfft_label.config(text=str(self.nfft_var.get()))
         
         # 7 ─ Clear old background
-        print(f"[DEBUG] Clearing background")
+        print(f"[BLIT_DEBUG] Step 15: Explicitly clearing background cache")
         self._bg_cache = None
         
         # 8 ─ Reset previous fs and duration to force rebuild in animate
+        print(f"[DURATION_TRACE] Step 16: Updating sig_cfg and prev tracking")
         self.sig_cfg.sample_rate = new_fs
         self.sig_cfg.buf_secs = new_dur
+        print(f"[DURATION_TRACE] Step 16a: sig_cfg.buf_secs now = {self.sig_cfg.buf_secs}")
         
         # Reset max-hold data
         self.maxhold_data = [None] * 16
         
         # 9 ─ Force full redraw and update display
-        print(f"[DEBUG] Full redraw")
+        print(f"[BLIT_DEBUG] Step 17: Calling fig_canvas.draw() to rebuild everything")
         self.fig_canvas.draw()
+        print(f"[BLIT_DEBUG] Step 17a: Draw complete, creating new background cache")
         self.fig_canvas.flush_events()
         self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
+        print(f"[BLIT_DEBUG] Step 17b: Background cache created: {self._bg_cache is not None}")
         
         # Update the status in console
         self.ser_console.configure(state="normal")
@@ -530,15 +565,16 @@ class App(tk.Tk):
         self.ser_console.configure(state="disabled")
         self.ser_console.see("end")
         
-        print(f"[DEBUG] sig_cfg now has: fs={self.sig_cfg.sample_rate}, dur={self.sig_cfg.buf_secs}")
-        print(f"[DEBUG] signal buffer shape = {self.sig._buf.shape}")
-        print(f"[DEBUG] _apply_buf_settings complete")
+        print(f"[DURATION_TRACE] Step 18: sig_cfg now has: fs={self.sig_cfg.sample_rate}, dur={self.sig_cfg.buf_secs}")
+        print(f"[DURATION_TRACE] Step 19: signal buffer shape = {self.sig._buf.shape}")
+        print(f"[DURATION_TRACE] Step 20: _apply_buf_settings complete")
         # Apply current NFFT clamp and cheb_atten immediately
         self._sig_update(fft_pts=self.nfft_var.get(),
                          cheb_atten_db=self.cheb_var.get())
         
-        self._prev_dur = int(float(self.dur_var.get()))
-        
+        self._prev_dur = new_dur  # Use the actual parsed value
+        print(f"[DURATION_TRACE] Step 21: Set _prev_dur = {self._prev_dur}")
+        print(f"[DURATION_TRACE] === APPLY BUTTON COMPLETE ===")
         
 
 
@@ -556,22 +592,25 @@ class App(tk.Tk):
         if hasattr(self, "ax_psd"):
             new_lo, new_hi = self.psd_lo.get(), self.psd_hi.get()
             self.ax_psd.set_ylim(new_lo, new_hi)
-            print(f"[DEBUG] PSD limits updated: ({new_lo}, {new_hi}) dB")
+            print(f"[BLIT_DEBUG] PSD limits updated: ({new_lo}, {new_hi}) dB")
     
+            print(f"[BLIT_DEBUG] Calling draw() due to PSD limits change")
             self.fig_canvas.draw()
             self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
-            print(f"[DEBUG] Figure background updated after PSD limits change")
+            print(f"[BLIT_DEBUG] Background cache updated after PSD limits change: {self._bg_cache is not None}")
 
 
     
     def _reset_maxhold(self):
         self.maxhold_data = [None] * 16
-        print(f"[DEBUG] Max-hold data reset")
+        print(f"[BLIT_DEBUG] Max-hold data reset")
         for ln in self.psd_max:
             ln.set_visible(False)
             ln.set_data([], [])  # clear visibly
+        print(f"[BLIT_DEBUG] Calling draw() due to max-hold reset")
         self.ax_psd.figure.canvas.draw()
         self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
+        print(f"[BLIT_DEBUG] Background cache updated after max-hold reset: {self._bg_cache is not None}")
 
 
 
@@ -939,6 +978,13 @@ class App(tk.Tk):
 
     # ── animate plots ----------------------------------------------------
     def _animate_plots(self):
+        """
+        Animation loop that updates plots every 16ms.
+        
+        CRITICAL FIX: This method now uses the expected duration for x-axis
+        calculation instead of the actual snapshot data size, which solves
+        the duration update issue.
+        """
         # stay idle until UDP really connected
         if not (self.udp and self.udp.board_ip):
             self.after(100, self._animate_plots)
@@ -953,59 +999,115 @@ class App(tk.Tk):
             self.after(16, self._animate_plots)
             return
     
+        print(f"[DURATION_TRACE] === ANIMATE PLOTS ENTRY ===")
         data   = snap["data"]                 # (N,16)
         npts   = data.shape[0]
         fs_val = self.sig_cfg.sample_rate
         self._prev_fs = getattr(self, "_prev_fs", fs_val)
+        print(f"[DURATION_TRACE] Animate: npts={npts}, fs_val={fs_val}, _prev_fs={self._prev_fs}")
+        print(f"[DURATION_TRACE] Animate: Expected buffer size for {self.sig_cfg.buf_secs}s at {fs_val}Hz = {int(self.sig_cfg.buf_secs * fs_val)} points")
+        print(f"[DURATION_TRACE] Animate: Actual signal buffer shape = {self.sig._buf.shape if hasattr(self.sig, '_buf') else 'N/A'}")
+        print(f"[DURATION_TRACE] Animate: Signal worker buf_secs = {getattr(self.sig.cfg, 'buf_secs', 'N/A') if hasattr(self.sig, 'cfg') else 'N/A'}")
     
-        # x-vector in **seconds**
-        xs_sec = np.arange(npts) / fs_val
+        # ==================================================================
+        # CRITICAL FIX: Use full buffer size for x-axis, not snapshot size
+        # ==================================================================
+        expected_npts = int(self.sig_cfg.buf_secs * fs_val)
+        print(f"[DURATION_TRACE] FIX: Snapshot returned {npts} points but buffer should have {expected_npts} points")
+        print(f"[DURATION_TRACE] FIX: Creating x-axis for full {self.sig_cfg.buf_secs}s duration regardless of snapshot size")
         
-        # Ensure we're using the correct duration from config
-        try:
-            duration = float(self.dur_var.get())
-        except:
-            duration = self.sig_cfg.buf_secs
-            
+        # x-vector in **seconds** - use FULL DURATION, not snapshot size
+        xs_sec = np.arange(expected_npts) / fs_val
+        print(f"[DURATION_TRACE] Animate: xs_sec created with {len(xs_sec)} points, range {xs_sec[0]:.3f} to {xs_sec[-1]:.3f}")
+        print(f"[DURATION_TRACE] FIX APPLIED: xs_sec now covers full {self.sig_cfg.buf_secs}s duration")
+        
+        # Use the config duration, which is the authoritative source after Apply
+        duration = self.sig_cfg.buf_secs
+        print(f"[DURATION_TRACE] Animate: Using sig_cfg.buf_secs = {duration}")
+        print(f"[DURATION_TRACE] Animate: For comparison, dur_var.get() = '{self.dur_var.get()}'")
+        print(f"[DURATION_TRACE] Animate: For comparison, dur_entry.get() = '{self.dur_entry.get()}'")
+        
         # rebuild line objects if length OR Fs changed -------------------
+        prev_dur = getattr(self, '_prev_dur', duration)
+        print(f"[DURATION_TRACE] Animate: Comparing durations - current={duration}, prev={prev_dur}")
+        
         need_rebuild = (
             xs_sec.size != self.time_lines[0].get_xdata().size or
             fs_val != self._prev_fs or
-            abs(duration - getattr(self, '_prev_dur', duration)) > 1e-6
+            abs(duration - prev_dur) > 1e-6
         )
+        
+        print(f"[DURATION_TRACE] Animate: Rebuild check:")
+        print(f"[DURATION_TRACE] Animate:   xs_sec.size={xs_sec.size} vs time_lines[0].size={self.time_lines[0].get_xdata().size}")
+        print(f"[DURATION_TRACE] Animate:   fs_val={fs_val} vs _prev_fs={self._prev_fs}")
+        print(f"[DURATION_TRACE] Animate:   duration diff = {abs(duration - prev_dur)}")
+        print(f"[DURATION_TRACE] Animate:   need_rebuild = {need_rebuild}")
     
         if need_rebuild:
-            print(f"[DEBUG] Need rebuild: size {xs_sec.size} vs {self.time_lines[0].get_xdata().size}, fs {fs_val} vs {self._prev_fs}, dur {duration} vs {getattr(self, '_prev_dur', duration)}")
+            print(f"[DURATION_TRACE] Animate: REBUILDING!")
             for ln in (*self.time_lines, self.dt_line):
                 ln.set_xdata(xs_sec)
                 ln.set_ydata(np.zeros_like(xs_sec))
             for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
-                ax.set_xlim(0, duration)  # Use duration not xs_sec[-1]
-            print(f"[DEBUG] Calling draw() in animate")
+                print(f"[DURATION_TRACE] Animate REBUILD: Setting {ax} xlim to (0, {duration})")
+                ax.set_xlim(0, duration)
+                print(f"[DURATION_TRACE] Animate REBUILD: After set_xlim, {ax}.get_xlim() = {ax.get_xlim()}")
+            print(f"[DURATION_TRACE] Animate: Calling draw() for rebuild")
             self.fig_canvas.draw()            # new blit backgrounds
-            print(f"[DEBUG] After draw(), background cached")
+            # CRITICAL: Update background cache after rebuild
+            self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
+            print(f"[DURATION_TRACE] Animate: After draw(), background cached")
             self._prev_fs = fs_val            # store for next call
             self._prev_dur = duration         # store duration too
-            print(f"[DEBUG] Rebuild complete → fs={fs_val}, dur={duration}")
+            print(f"[DURATION_TRACE] Animate: Updated _prev_fs={fs_val}, _prev_dur={duration}")
+        else:
+            print(f"[DURATION_TRACE] Animate: NO REBUILD - keeping existing xlim")
+            for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
+                print(f"[DURATION_TRACE] Animate NO REBUILD: {ax}.get_xlim() = {ax.get_xlim()}")
     
         # Re-acquire background if missing (e.g. after resize)
         if self._bg_cache is None:
-            print(f"[DEBUG] Background cache missing, redrawing")
+            print(f"[DURATION_TRACE] Animate: Background cache missing, redrawing")
             self.fig_canvas.draw()
+            self._bg_cache = self.fig_canvas.copy_from_bbox(self.fig.bbox)
     
         # Δt (for now just showing zeros as placeholder)
-        self.dt_line.set_ydata(np.zeros_like(xs_sec))
+        self.dt_line.set_ydata(np.zeros(xs_sec.size))
     
         # time-domain --------------------------------------------------------
-        for ln, ch in zip(self.time_lines, data.T):
-            ln.set_ydata(ch)
+        # Handle case where snapshot data is smaller than full buffer
+        if data.shape[0] < xs_sec.size:
+            print(f"[DURATION_TRACE] Animate: Snapshot data ({data.shape[0]}) < full buffer ({xs_sec.size})")
+            # Create zero-padded data that matches the full x-axis
+            full_data = np.zeros((xs_sec.size, 16))
+            # Put the snapshot data at the end (most recent)
+            full_data[-data.shape[0]:] = data
+            for ln, ch in zip(self.time_lines, full_data.T):
+                ln.set_ydata(ch)
+        else:
+            # If we somehow have more data than expected, just use the last portion
+            for ln, ch in zip(self.time_lines, data[-xs_sec.size:].T):
+                ln.set_ydata(ch)
     
         # spectrogram (seconds on x-axis) ------------------------------------
-        f_s, t_s, Sxx = sps.spectrogram(data[:, 0], fs=fs_val,
+        # Use the most recent data for spectrogram (or pad if needed)
+        if data.shape[0] < expected_npts:
+            # Pad with zeros at the beginning
+            spec_data = np.zeros(expected_npts)
+            spec_data[-data.shape[0]:] = data[:, 0]
+        else:
+            spec_data = data[-expected_npts:, 0]
+            
+        f_s, t_s, Sxx = sps.spectrogram(spec_data, fs=fs_val,
                                         window="hann", nperseg=256, noverlap=128)
         self.im_specgram.set_data(10*np.log10(Sxx + 1e-12))
         # extent: (t_left, t_right, f_low, f_high)
         self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
+        print(f"[DURATION_TRACE] Animate: Set spectrogram extent to (0, {duration}, {f_s[0]}, {f_s[-1]})")
+        
+        # wavelet (placeholder - currently just showing same as spectrogram)
+        self.im_wavelet.set_data(10*np.log10(Sxx + 1e-12))
+        self.im_wavelet.set_extent((0, duration, 1, fs_val/2))
     
         # PSD ----------------------------------------------------------------
         nfft  = int(self.nfft_var.get())
@@ -1048,6 +1150,7 @@ class App(tk.Tk):
             for ln in self.time_lines:
                 self.ax_time.draw_artist(ln)
             self.ax_sg.draw_artist(self.im_specgram)
+            self.ax_wav.draw_artist(self.im_wavelet)
             for ln in (*self.psd_lines, *self.psd_max):
                 if ln.get_visible():
                     self.ax_psd.draw_artist(ln)
@@ -1055,7 +1158,8 @@ class App(tk.Tk):
             # Single blit call for the entire figure
             self.fig_canvas.blit(self.fig.bbox)
             self.fig_canvas.flush_events()
-    
+        
+        print(f"[DURATION_TRACE] === ANIMATE PLOTS EXIT ===")
         self.after(16, self._animate_plots)
 
 
