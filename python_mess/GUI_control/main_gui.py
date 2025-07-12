@@ -16,7 +16,7 @@ Revision
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
 # Set to 1 to enable debug messages, 0 to disable
-DEBUG = 0
+DEBUG = 1
 # ──────────────────────────────────────────────────────────────────
 
 import sys
@@ -245,6 +245,50 @@ class App(tk.Tk):
         self.maxhold_cb.grid(row=r, column=6, sticky="w")
         ttk.Button(ctrl, text="Reset", command=self._reset_maxhold)\
             .grid(row=r, column=6, sticky="e", padx=4)
+        r += 1
+        
+        # Channel visibility checkboxes
+        ttk.Label(ctrl, text="Channels").grid(row=r, column=0, sticky="e")
+        ch_frame = ttk.Frame(ctrl)
+        ch_frame.grid(row=r, column=1, columnspan=6, sticky="w", padx=2)
+        
+        # Create 16 checkboxes in 8x2 grid
+        self.channel_vars = []
+        self.channel_cbs = []
+        
+        if DEBUG:
+            print(f"[MAIN_GUI] Creating channel checkboxes...")
+        
+        for i in range(16):
+            var = tk.BooleanVar(value=True)
+            self.channel_vars.append(var)
+        
+            def make_callback(index):
+                return lambda: self._toggle_channel(index)
+        
+            cb = tk.Checkbutton(
+                ch_frame,
+                text=f"{i}",
+                command=make_callback(i),
+                width=3,
+                bg=self.BG,
+                fg=self.FG,
+                selectcolor=self.BG,
+                activebackground="#3E3E3E"
+            )
+            cb.grid(row=i // 8, column=i % 8, padx=1, pady=1)
+            self.channel_cbs.append(cb)
+        
+            if DEBUG:
+                print(f"[MAIN_GUI] Created checkbox for channel {i}, var={var.get()}")
+            
+        # Add All/None buttons for convenience
+        btn_frame = ttk.Frame(ch_frame)
+        btn_frame.grid(row=0, column=8, rowspan=2, padx=(10, 0))
+        ttk.Button(btn_frame, text="All", width=5,
+                   command=self._select_all_channels).grid(row=0, column=0, pady=1)
+        ttk.Button(btn_frame, text="None", width=5,
+                   command=self._select_no_channels).grid(row=1, column=0, pady=1)
 
     def _on_maxhold_toggle(self):
         """Handle max-hold toggle using PlotManager."""
@@ -404,6 +448,28 @@ class App(tk.Tk):
     def _reset_maxhold(self):
         """Reset max-hold using PlotManager."""
         self.plots.reset_maxhold()
+        
+    def _toggle_channel(self, channel: int):
+        """Force-toggle the checkbox state manually and update plots."""
+        current = self.channel_vars[channel].get()
+        new_val = not current
+        self.channel_vars[channel].set(new_val)
+    
+        if DEBUG:
+            print(f"[MAIN_GUI] Channel {channel} manually toggled to: {new_val}")
+        self.plots.set_channel_visibility(channel, new_val)
+        
+    def _select_all_channels(self):
+        """Turn ON all channels immediately."""
+        for var in self.channel_vars:
+            var.set(True)
+        self.plots.set_all_channels_visibility([True] * 16)
+    
+    def _select_no_channels(self):
+        """Turn OFF all channels immediately."""
+        for var in self.channel_vars:
+            var.set(False)
+        self.plots.set_all_channels_visibility([False] * 16)
 
     # ── debounced draw ---------------------------------------------------
     def _queue_redraw(self, _):

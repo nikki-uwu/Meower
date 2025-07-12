@@ -130,6 +130,7 @@ class PlotManager:
         self._current_duration = 4
         self.maxhold_data = [None] * 16
         self.maxhold_enabled = False
+        self.channel_visible = [True] * 16  # All channels visible by default
         
     def get_widget(self):
         """Return the Tk widget for embedding in GUI."""
@@ -203,6 +204,15 @@ class PlotManager:
         self.im_specgram.set_animated(True)
         for line in (*self.psd_lines, *self.psd_max):
             line.set_animated(True)
+            
+        # Restore channel visibility settings
+        for i in range(16):
+            self.time_lines[i].set_visible(self.channel_visible[i])
+            self.psd_lines[i].set_visible(self.channel_visible[i])
+            if self.maxhold_enabled and self.channel_visible[i]:
+                self.psd_max[i].set_visible(True)
+            else:
+                self.psd_max[i].set_visible(False)
         
         # Update xlimits
         for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
@@ -255,29 +265,39 @@ class PlotManager:
             # Pad with zeros if snapshot is smaller than buffer
             full_data = np.zeros((xs_sec.size, 16))
             full_data[-data.shape[0]:] = data
-            for ln, ch in zip(self.time_lines, full_data.T):
+            for i, (ln, ch) in enumerate(zip(self.time_lines, full_data.T)):
                 ln.set_ydata(ch)
+                # Ensure visibility is maintained during updates
+                ln.set_visible(self.channel_visible[i])
         else:
             # Use last portion if we have more data
-            for ln, ch in zip(self.time_lines, data[-xs_sec.size:].T):
+            for i, (ln, ch) in enumerate(zip(self.time_lines, data[-xs_sec.size:].T)):
                 ln.set_ydata(ch)
+                # Ensure visibility is maintained during updates
+                ln.set_visible(self.channel_visible[i])
         
-        # Update spectrogram
-        if data.shape[0] < expected_npts:
-            spec_data = np.zeros(expected_npts)
-            spec_data[-data.shape[0]:] = data[:, 0]
-        else:
-            spec_data = data[-expected_npts:, 0]
+        # Update spectrogram (only if channel 0 is visible)
+        if self.channel_visible[0]:
+            if data.shape[0] < expected_npts:
+                spec_data = np.zeros(expected_npts)
+                spec_data[-data.shape[0]:] = data[:, 0]
+            else:
+                spec_data = data[-expected_npts:, 0]
+                
+            f_s, t_s, Sxx = sps.spectrogram(
+                spec_data, fs=fs, window="hann", nperseg=256, noverlap=128
+            )
+            self.im_specgram.set_data(10*np.log10(Sxx + 1e-12))
+            self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
             
-        f_s, t_s, Sxx = sps.spectrogram(
-            spec_data, fs=fs, window="hann", nperseg=256, noverlap=128
-        )
-        self.im_specgram.set_data(10*np.log10(Sxx + 1e-12))
-        self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
-        
-        # Update wavelet (using same data as spectrogram for now)
-        self.im_wavelet.set_data(10*np.log10(Sxx + 1e-12))
-        self.im_wavelet.set_extent((0, duration, 1, fs/2))
+            # Update wavelet (using same data as spectrogram for now)
+            self.im_wavelet.set_data(10*np.log10(Sxx + 1e-12))
+            self.im_wavelet.set_extent((0, duration, 1, fs/2))
+        else:
+            # Channel 0 hidden - show empty spectrograms
+            empty = np.zeros((64, expected_npts))
+            self.im_specgram.set_data(empty)
+            self.im_wavelet.set_data(empty)
         
         # Update PSD
         try:
@@ -292,8 +312,10 @@ class PlotManager:
                 seg = data[-nfft:, idx] * win
                 psd = 20*np.log10(np.abs(np.fft.rfft(seg)) + 1e-15)
                 self.psd_lines[idx].set_data(freqs, psd)
+                # Ensure visibility is maintained
+                self.psd_lines[idx].set_visible(self.channel_visible[idx])
                 
-                if self.maxhold_enabled:
+                if self.maxhold_enabled and self.channel_visible[idx]:
                     mh = self.maxhold_data[idx]
                     if mh is None or len(mh) != len(psd):
                         self.maxhold_data[idx] = psd.copy()
@@ -303,6 +325,10 @@ class PlotManager:
                     self.psd_max[idx].set_visible(True)
                 else:
                     self.psd_max[idx].set_visible(False)
+            else:
+                # Not enough data for FFT - hide the line
+                self.psd_lines[idx].set_visible(False)
+                self.psd_max[idx].set_visible(False)
                     
         self.ax_psd.set_xlim(0, fs / 2)
         
@@ -327,7 +353,8 @@ class PlotManager:
         """Toggle max-hold display."""
         self.maxhold_enabled = enabled
         for idx in range(16):
-            self.psd_max[idx].set_visible(enabled)
+            # Only show max-hold if channel is visible
+            self.psd_max[idx].set_visible(enabled and self.channel_visible[idx])
         if not enabled:
             self.maxhold_data = [None] * 16
         if self.debug:
@@ -363,12 +390,16 @@ class PlotManager:
         
         # Draw all animated artists
         self.ax_dt.draw_artist(self.dt_line)
-        for ln in self.time_lines:
-            self.ax_time.draw_artist(ln)
+        for i, ln in enumerate(self.time_lines):
+            if self.channel_visible[i] and ln.get_visible():
+                self.ax_time.draw_artist(ln)
         self.ax_sg.draw_artist(self.im_specgram)
         self.ax_wav.draw_artist(self.im_wavelet)
-        for ln in (*self.psd_lines, *self.psd_max):
-            if ln.get_visible():
+        for i, ln in enumerate(self.psd_lines):
+            if self.channel_visible[i] and ln.get_visible():
+                self.ax_psd.draw_artist(ln)
+        for i, ln in enumerate(self.psd_max):
+            if ln.get_visible():  # Max-hold visibility already considers channel visibility
                 self.ax_psd.draw_artist(ln)
                 
         # Single blit call for entire figure
@@ -401,3 +432,51 @@ class PlotManager:
                 self.ax_sg.set_ylabel(labels['sg'])
             if 'psd' in labels:
                 self.ax_psd.set_ylabel(labels['psd'])
+                
+    def set_channel_visibility(self, channel: int, visible: bool):
+        """Set visibility for a specific channel (0-15)."""
+        if self.debug:
+            print(f"[PLOT_MANAGER] set_channel_visibility called: channel={channel}, visible={visible}")
+            
+        if 0 <= channel < 16:
+            self.channel_visible[channel] = visible
+            
+            # Update line visibility immediately
+            if self.debug:
+                print(f"[PLOT_MANAGER] Setting time_lines[{channel}].set_visible({visible})")
+            self.time_lines[channel].set_visible(visible)
+            
+            if self.debug:
+                print(f"[PLOT_MANAGER] Setting psd_lines[{channel}].set_visible({visible})")
+            self.psd_lines[channel].set_visible(visible)
+            
+            if not visible:
+                # If hiding channel, also hide its max-hold line
+                self.psd_max[channel].set_visible(False)
+            elif self.maxhold_enabled:
+                # If showing channel and max-hold is on, show max-hold line
+                self.psd_max[channel].set_visible(True)
+            
+            if self.debug:
+                print(f"[PLOT_MANAGER] Channel {channel} visibility updated to: {visible}")
+                print(f"[PLOT_MANAGER] Calling draw_full()")
+            
+            # Force redraw to update display immediately
+            self.draw_full()
+            
+    def set_all_channels_visibility(self, visible_list: list):
+        """Set visibility for all channels at once (more efficient)."""
+        if len(visible_list) != 16:
+            return
+            
+        for i in range(16):
+            self.channel_visible[i] = visible_list[i]
+            self.time_lines[i].set_visible(visible_list[i])
+            self.psd_lines[i].set_visible(visible_list[i])
+            if not visible_list[i]:
+                self.psd_max[i].set_visible(False)
+            elif self.maxhold_enabled:
+                self.psd_max[i].set_visible(True)
+                
+        # Single redraw for all changes
+        self.draw_full()
