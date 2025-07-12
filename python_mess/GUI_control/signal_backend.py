@@ -34,7 +34,7 @@ def parse_frame(raw: bytes) -> np.ndarray:
     return val
 
 # ── single scaling factor: ±4.5 V full-scale ─────────────────────────
-SCALE = 4.5 / (1 << 23)                # 0.536 µV / LSB
+SCALE = 4.5 / (2**23)                # 0.536 µV / LSB
 
 # ── background UDP reader process ────────────────────────────────────
 class _Reader(mp.Process):
@@ -53,7 +53,6 @@ class _Reader(mp.Process):
         current_buf_len = self.cfg.buf_len
         buf_raw  = np.zeros((current_buf_len, self.cfg.n_ch), np.int32)
         buf_time = np.zeros(current_buf_len,                   np.uint32)
-        ptr = 0  # Write pointer for circular buffer
         
         # Add a flag to track if we should pause data reception
         pause_flag = getattr(self.cfg, 'pause_reception', False)
@@ -83,12 +82,6 @@ class _Reader(mp.Process):
                 buf_raw = new_buf_raw
                 buf_time = new_buf_time
                 current_buf_len = expected_buf_len
-                ptr = 0  # Reset pointer after resize
-                
-                # Update shared memory immediately
-                with self.lock:
-                    self.shared["data"] = buf_raw.astype(np.float32) * SCALE
-                    self.shared["time"] = buf_time.copy()
             
             # Check if we should pause reception
             if getattr(self.cfg, 'pause_reception', False):
@@ -110,19 +103,17 @@ class _Reader(mp.Process):
             for n in range(frames):
                 base = n * self.FRAMESIZE
                 
-                # Use circular buffer with pointer instead of rolling
-                buf_raw[ptr] = parse_frame(pkt[base : base + 48])
-                buf_time[ptr] = struct.unpack_from("<I", pkt, base + 48)[0]
-                ptr = (ptr + 1) % current_buf_len
+                # Use simple np.roll approach like in v07.py
+                buf_raw = np.roll(buf_raw, -1, axis=0)
+                buf_time = np.roll(buf_time, -1)
+                buf_raw[-1] = parse_frame(pkt[base : base + 48])
+                buf_time[-1] = struct.unpack_from("<I", pkt, base + 48)[0]
                 
-            # Update shared memory with properly ordered data
+            # Update shared memory - data is already in correct order
+            # CRITICAL: buf_raw is int32, multiply by float scale -> float64 result
             with self.lock:
-                # Reorder buffer so oldest data is at index 0
-                ordered_raw = np.concatenate([buf_raw[ptr:], buf_raw[:ptr]], axis=0)
-                ordered_time = np.concatenate([buf_time[ptr:], buf_time[:ptr]])
-                
-                self.shared["data"]   = ordered_raw.astype(np.float32) * SCALE
-                self.shared["time"]   = ordered_time
+                self.shared["data"]   = (buf_raw * SCALE).copy()  # Let NumPy handle the type conversion
+                self.shared["time"]   = buf_time.copy()
                 self.shared["batt_v"] = batt
 
 # ── facade for GUI ───────────────────────────────────────────────────
