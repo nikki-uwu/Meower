@@ -247,6 +247,7 @@ class _Reader(mp.Process):
                         
                         # Parse 24-bit samples and timestamp
                         buf_raw[ptr] = parse_frame(recv_buf[base:base + 48])
+                        # Timestamp is in units of 8 microseconds (hardware specific)
                         buf_time[ptr] = struct.unpack_from('<I', recv_buf, base + 48)[0]
                         
                         # Advance circular buffer pointer

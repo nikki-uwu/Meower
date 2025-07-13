@@ -62,6 +62,13 @@ class PlotManager:
         # Configure axes
         self.ax_dt.set_ylabel("Δt [µs]")
         self.ax_dt.grid(ls=":")
+        # Set initial Δt limits based on default 250Hz
+        expected_period_us = 1e6 / 250  # 4000 µs for 250Hz
+        y_min = expected_period_us - 100
+        y_max = expected_period_us + 100
+        if y_min < 0:
+            y_min = 0
+        self.ax_dt.set_ylim(y_min, y_max)
         self.ax_time.set_ylabel("V")
         self.ax_time.grid(ls=":")
         self.ax_time.set_ylim(-0.5, 0.5)  # Initial amplitude limits
@@ -159,7 +166,8 @@ class PlotManager:
         current_psd_min, current_psd_max = self.ax_psd.get_ylim()
         
         # Recreate axes labels and settings
-        self.ax_dt.set_ylabel("Δt [µs]")
+        expected_period_us = 1e6 / fs
+        self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
         self.ax_dt.grid(ls=":")
         self.ax_time.set_ylabel("V")
         self.ax_time.grid(ls=":")
@@ -219,6 +227,23 @@ class PlotManager:
             ax.set_xlim(0, duration)
             ax.set_xlabel("Time (s)")
         
+        # Add reference line for expected period in Δt plot
+        expected_period_us = 1e6 / fs
+        self._dt_expected_line = self.ax_dt.axhline(
+            y=expected_period_us, 
+            color='gray', 
+            linestyle='--', 
+            alpha=0.5,
+            animated=True
+        )
+        
+        # Set Δt y-axis limits
+        y_min = expected_period_us - 100
+        y_max = expected_period_us + 100
+        if y_min < 0:
+            y_min = 0
+        self.ax_dt.set_ylim(y_min, y_max)
+        
         # Reset max-hold data
         self.maxhold_data = [None] * 16
         
@@ -231,7 +256,8 @@ class PlotManager:
         self.draw_full()
         
     def update_snapshot(self, data: np.ndarray, fs: int, duration: int, 
-                       nfft: int = 512, cheb_db: float = 80.0):
+                       timestamps: np.ndarray = None, nfft: int = 512, 
+                       cheb_db: float = 80.0):
         """
         Update all plots with new data snapshot.
         
@@ -239,6 +265,7 @@ class PlotManager:
             data: (N, 16) array of samples
             fs: Sample rate in Hz
             duration: Expected buffer duration in seconds
+            timestamps: (N,) array of hardware timestamps for Δt calculation
             nfft: FFT size for PSD
             cheb_db: Chebyshev window attenuation in dB
         """
@@ -257,8 +284,77 @@ class PlotManager:
         # Create x-axis for full duration
         xs_sec = np.arange(expected_npts) / fs
         
-        # Update Δt (placeholder - zeros for now)
-        self.dt_line.set_ydata(np.zeros(xs_sec.size))
+        # Update Δt (time differences from timestamps)
+        if timestamps is not None and isinstance(timestamps, np.ndarray) and len(timestamps) > 1:
+            try:
+                # Calculate time differences between consecutive samples
+                # Hardware timestamps are in units of 8 microseconds
+                # (1 unit = 8μs, 2 units = 16μs, etc.)
+                # So multiply by 8 to get actual microseconds
+                time_diffs = np.diff(timestamps.astype(np.int64))
+                
+                # Handle 32-bit wraparound
+                time_diffs = np.where(time_diffs < 0, time_diffs + (1 << 32), time_diffs)
+                
+                # Convert to microseconds (multiply by 8)
+                dt_us = time_diffs.astype(np.float64) * 8.0
+                
+                # Pad with the expected period to match the full buffer size
+                expected_period_us = 1e6 / fs
+                if len(dt_us) < xs_sec.size - 1:
+                    dt_full = np.full(xs_sec.size, expected_period_us)
+                    # Put the actual diffs at the end (most recent data)
+                    start_idx = max(0, xs_sec.size - len(dt_us) - 1)
+                    dt_full[start_idx:start_idx + len(dt_us)] = dt_us
+                else:
+                    # Take the last portion if we have more data
+                    dt_full = np.full(xs_sec.size, expected_period_us)
+                    dt_full[:-1] = dt_us[-(xs_sec.size-1):]
+                
+                # First sample has no previous sample to diff with
+                dt_full[0] = expected_period_us
+                    
+                self.dt_line.set_ydata(dt_full)
+                
+                # Set y-axis limits: expected period ±100μs
+                y_min = expected_period_us - 100
+                y_max = expected_period_us + 100
+                # Clip minimum to 0 if it would go negative
+                if y_min < 0:
+                    y_min = 0
+                self.ax_dt.set_ylim(y_min, y_max)
+                
+                # Add or update the horizontal reference line at the expected period
+                if not hasattr(self, '_dt_expected_line'):
+                    self._dt_expected_line = self.ax_dt.axhline(
+                        y=expected_period_us, 
+                        color='gray', 
+                        linestyle='--', 
+                        alpha=0.5,
+                        animated=True
+                    )
+                else:
+                    self._dt_expected_line.set_ydata([expected_period_us, expected_period_us])
+                    
+                # Update axis label to show expected period
+                self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
+            except Exception as e:
+                if self.debug:
+                    print(f"[PLOT_MANAGER] Error updating Δt plot: {e}")
+                # Fall back to showing expected period
+                expected_period_us = 1e6 / fs
+                self.dt_line.set_ydata(np.full(xs_sec.size, expected_period_us))
+        else:
+            # No timestamps available, show expected period
+            expected_period_us = 1e6 / fs
+            self.dt_line.set_ydata(np.full(xs_sec.size, expected_period_us))
+            # Set appropriate limits based on sample rate
+            y_min = expected_period_us - 100
+            y_max = expected_period_us + 100
+            if y_min < 0:
+                y_min = 0
+            self.ax_dt.set_ylim(y_min, y_max)
+            self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
         
         # Update time-domain plots
         if data.shape[0] < xs_sec.size:
@@ -324,10 +420,14 @@ class PlotManager:
                     mh = self.maxhold_data[idx]
                     if mh is None or len(mh) != len(psd):
                         self.maxhold_data[idx] = psd.copy()
+                        if self.debug:
+                            print(f"[PLOT_MANAGER] Initializing max-hold for channel {idx}")
                     else:
                         self.maxhold_data[idx] = np.maximum(mh, psd)
                     self.psd_max[idx].set_data(freqs, self.maxhold_data[idx])
                     self.psd_max[idx].set_visible(True)
+                    if self.debug:
+                        print(f"[PLOT_MANAGER] Max-hold updated for channel {idx}, visible={self.psd_max[idx].get_visible()}")
                 else:
                     self.psd_max[idx].set_visible(False)
             else:
@@ -359,7 +459,10 @@ class PlotManager:
         self.maxhold_enabled = enabled
         for idx in range(16):
             # Only show max-hold if channel is visible
-            self.psd_max[idx].set_visible(enabled and self.channel_visible[idx])
+            visible = enabled and self.channel_visible[idx]
+            self.psd_max[idx].set_visible(visible)
+            if self.debug:
+                print(f"[PLOT_MANAGER] Max-hold line {idx}: visible={visible} (enabled={enabled}, ch_visible={self.channel_visible[idx]})")
         if not enabled:
             self.maxhold_data = [None] * 16
         if self.debug:
@@ -395,6 +498,8 @@ class PlotManager:
         
         # Draw all animated artists
         self.ax_dt.draw_artist(self.dt_line)
+        if hasattr(self, '_dt_expected_line'):
+            self.ax_dt.draw_artist(self._dt_expected_line)
         for i, ln in enumerate(self.time_lines):
             if self.channel_visible[i] and ln.get_visible():
                 self.ax_time.draw_artist(ln)

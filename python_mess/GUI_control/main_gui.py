@@ -12,6 +12,7 @@ Revision
   remains active; we only throttle the expensive draw call.
 • **Fixed blitting**: Proper implementation with animated artists and single figure background
 • **Fixed duration issue**: X-axis now uses expected duration, not snapshot size
+• **Fixed max-hold**: Manual toggle to work around Tkinter callback timing
 """
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
@@ -239,9 +240,14 @@ class App(tk.Tk):
             .grid(row=r, column=5, sticky="we", padx=2)
     
         self.maxhold_on = tk.BooleanVar(value=False)
-        self.maxhold_cb = ttk.Checkbutton(
-            ctrl, text="Max-hold", variable=self.maxhold_on,
-            command=self._on_maxhold_toggle
+        self.maxhold_cb = tk.Checkbutton(
+            ctrl, text="Max-hold", 
+            variable=self.maxhold_on,
+            command=self._on_maxhold_toggle,
+            bg=self.BG,
+            fg=self.FG,
+            selectcolor=self.BG,
+            activebackground="#3E3E3E"
         )
         self.maxhold_cb.grid(row=r, column=6, sticky="w")
         ttk.Button(ctrl, text="Reset", command=self._reset_maxhold)\
@@ -293,7 +299,14 @@ class App(tk.Tk):
 
     def _on_maxhold_toggle(self):
         """Handle max-hold toggle using PlotManager."""
-        self.plots.set_maxhold(self.maxhold_on.get())
+        # Manual toggle to work around Tkinter callback timing
+        current = self.maxhold_on.get()
+        new_val = not current
+        self.maxhold_on.set(new_val)
+        
+        if DEBUG:
+            print(f"[MAIN_GUI] Max-hold manually toggled to: {new_val}")
+        self.plots.set_maxhold(new_val)
 
     # live SigConfig update and safety-clamped NFFT
     def _sig_update(self, **kwargs):
@@ -824,6 +837,7 @@ class App(tk.Tk):
         
         # Update plots using PlotManager
         data = snap["data"]  # (N,16)
+        timestamps = snap.get("time", None)  # Get timestamps if available
         fs_val = self.sig_cfg.sample_rate
         duration = self.sig_cfg.buf_secs
         
@@ -832,6 +846,7 @@ class App(tk.Tk):
             data=data,
             fs=fs_val,
             duration=duration,
+            timestamps=timestamps,
             nfft=self.nfft_var.get(),
             cheb_db=self.cheb_var.get()
         )
