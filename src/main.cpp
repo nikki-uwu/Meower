@@ -201,8 +201,6 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
         // store were we continuously reading or not for the next frame
         wasReading = continuousReading;
         
-        uint32_t timeStamp = getTimer8us(); // 8us timer
-
         // Wait until ADC pulls DRDY down (adc samples are ready to read)
         // We will wait here forever
         ulTaskNotifyTake(pdTRUE       ,  // clear on exit
@@ -216,7 +214,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
         // - memcpy is always safe, even if alignment or buffer padding is not guaranteed.
         // - The timestamp sits directly after the 48 bytes of channel data, at offset +48 in each frame.
         // - Suitable for real-time use, provides low-latency timestamping.
-        timeStamp = getTimer8us() - timeStamp; // 8us timer
+        uint32_t timeStamp = getTimer8us(); // 8us timer
         memcpy(&dataBuffer[bytesWritten + ADC_PARSED_FRAME], &timeStamp, sizeof(timeStamp));
 
         // If we are in continuous mode - do stuff if not - do nothing at all

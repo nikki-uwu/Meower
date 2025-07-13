@@ -311,7 +311,7 @@ void BCI_preset()
     // We have 8 channels in each ADC and we assign default settings to all of them in pairs
     for (uint8_t ind = 0; ind < 8u; ind++)
     {
-        const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x028 };
+        const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x08 };
         uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
         xfer('B', 3u, Config_Channels, rx_mes);
 
