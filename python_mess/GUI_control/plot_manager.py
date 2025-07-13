@@ -21,6 +21,46 @@ matplotlib.rcParams.update({
 })
 
 
+def ricker_wavelet(points, width):
+    """
+    Pure Python Ricker (Mexican hat) wavelet.
+    
+    Args:
+        points: Number of points in the wavelet
+        width: Width parameter of the wavelet
+        
+    Returns:
+        Ricker wavelet array
+    """
+    A = 2 / (np.sqrt(3 * width) * (np.pi**0.25))
+    t = np.linspace(-points//2, points//2, points)
+    wsq = width**2
+    return A * (1 - (t**2) / wsq) * np.exp(-(t**2) / (2 * wsq))
+
+
+def ricker_cwt(x, widths, min_points=6):
+    """
+    Compute continuous wavelet transform using Ricker wavelets.
+    
+    Args:
+        x: Input signal
+        widths: Array of wavelet widths
+        min_points: Minimum points for wavelet
+        
+    Returns:
+        CWT matrix
+    """
+    output = np.zeros((len(widths), len(x)), dtype=np.float32)
+    for idx, width in enumerate(widths):
+        points = max(2 * int(width), min_points)
+        if points < min_points or points > len(x):
+            # Skip wavelets that are too short or longer than signal
+            continue
+        wavelet = ricker_wavelet(points, width)
+        output[idx, :] = np.convolve(x, wavelet, mode='same')
+    return output
+
+
 class PlotManager:
     """
     Encapsulates all matplotlib plotting complexity for the EEG GUI.
@@ -264,7 +304,8 @@ class PlotManager:
         
     def update_snapshot(self, data: np.ndarray, fs: int, duration: int, 
                        timestamps: np.ndarray = None, nfft: int = 512, 
-                       cheb_db: float = 80.0, spec_nperseg: int = 256):
+                       cheb_db: float = 80.0, spec_nperseg: int = 256,
+                       wav_freqs: int = 64):
         """
         Update all plots with new data snapshot.
         
@@ -276,6 +317,7 @@ class PlotManager:
             nfft: FFT size for PSD
             cheb_db: Chebyshev window attenuation in dB
             spec_nperseg: Spectrogram window size
+            wav_freqs: Number of frequency points for wavelet transform
         """
         # Check if buffer needs resizing
         expected_npts = int(duration * fs)
@@ -388,6 +430,9 @@ class PlotManager:
             else:
                 spec_data = data[-expected_npts:, self.wavspec_channel]
             
+            # Remove DC component by subtracting mean
+            spec_data_dc_removed = spec_data - np.mean(spec_data)
+            
             # Calculate 95% overlap
             noverlap = int(0.95 * spec_nperseg)
             
@@ -400,23 +445,54 @@ class PlotManager:
             # Normalize window
             spec_window = spec_window / np.mean(spec_window)
             
-            # Compute spectrogram with 95% overlap
+            # Compute spectrogram with 95% overlap and DC removed
             f_s, t_s, Sxx = sps.spectrogram(
-                spec_data, fs=fs, window=spec_window, 
+                spec_data_dc_removed, fs=fs, window=spec_window, 
                 nperseg=spec_nperseg, noverlap=noverlap
             )
             
             # Convert to dB and apply limits
-            Sxx_db = 10*np.log10(Sxx + 1e-12)
+            Sxx_db = 10*np.log10(Sxx + 1e-20)
             self.im_specgram.set_data(Sxx_db)
             self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
             self.im_specgram.set_clim(self.spec_vmin, self.spec_vmax)
             
-            # For wavelet, we'll use the same data but different visualization
-            # Using the same 95% overlap concept
-            self.im_wavelet.set_data(Sxx_db)
-            self.im_wavelet.set_extent((0, duration, 1, fs/2))
-            self.im_wavelet.set_clim(self.wav_vmin, self.wav_vmax)
+            # Compute proper wavelet transform
+            # Use the same DC-removed data
+            wav_data = spec_data_dc_removed
+            
+            # Define frequency range for wavelets
+            nyq = fs / 2
+            N_freqs = wav_freqs  # Use the parameter from GUI
+            freqs = np.linspace(1, nyq, N_freqs)
+            
+            # Convert frequencies to wavelet widths
+            # width = fs / (2 * pi * frequency)
+            widths = fs / (2 * np.pi * freqs)
+            
+            # Only keep widths that make sense for our signal length
+            valid = (2 * widths >= 6) & (2 * widths < len(wav_data))
+            widths = widths[valid]
+            freqs = freqs[valid]
+            
+            if len(widths) > 0:
+                # Compute CWT
+                cwt_matrix = ricker_cwt(wav_data, widths)
+                
+                # Convert to power in dB
+                cwt_power_db = 10 * np.log10(np.abs(cwt_matrix)**2 + 1e-20)
+                
+                # Update wavelet plot
+                self.im_wavelet.set_data(cwt_power_db)
+                self.im_wavelet.set_extent((0, duration, freqs[0], freqs[-1]))
+                self.im_wavelet.set_clim(self.wav_vmin, self.wav_vmax)
+                
+                # Update y-axis to show actual frequency range
+                self.ax_wav.set_ylim(freqs[0], freqs[-1])
+            else:
+                # No valid wavelets, show empty
+                empty = np.zeros((64, expected_npts))
+                self.im_wavelet.set_data(empty)
         else:
             # Selected channel is hidden - show empty spectrograms
             empty = np.zeros((64, expected_npts))
@@ -436,10 +512,13 @@ class PlotManager:
         
         for idx in range(16):
             if len(data) >= nfft:
-                seg = data[-nfft:, idx] * win
+                # Remove DC before FFT
+                seg = data[-nfft:, idx]
+                seg_dc_removed = seg - np.mean(seg)
+                seg_windowed = seg_dc_removed * win
                 # Perform FFT with normalization by length
-                fft_result = np.fft.rfft(seg) / nfft
-                psd = 20*np.log10(np.abs(fft_result) + 1e-15)
+                fft_result = np.fft.rfft(seg_windowed) / nfft
+                psd = 20*np.log10(np.abs(fft_result) + 1e-20)
                 self.psd_lines[idx].set_data(freqs, psd)
                 # Ensure visibility is maintained
                 self.psd_lines[idx].set_visible(self.channel_visible[idx])
