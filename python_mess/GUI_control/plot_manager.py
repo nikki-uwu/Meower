@@ -77,7 +77,7 @@ class PlotManager:
         self.ax_psd.set_ylabel("dB")
         self.ax_psd.set_xlabel("Hz")
         self.ax_psd.grid(ls=":")
-        self.ax_psd.set_ylim(-130, 0)  # Initial PSD limits
+        self.ax_psd.set_ylim(-150, -20)  # Initial PSD limits
         
         # Initialize with dummy data
         N0 = 100
@@ -91,11 +91,11 @@ class PlotManager:
         # Create image artists
         self.im_wavelet = self.ax_wav.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto", 
-            extent=(0, N0, 1, 250), vmin=-60, vmax=0
+            extent=(0, N0, 1, 250), vmin=-120, vmax=-30
         )
         self.im_specgram = self.ax_sg.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto",
-            extent=(0, N0, 0, 250), vmin=-80, vmax=0
+            extent=(0, N0, 0, 250), vmin=-120, vmax=-30
         )
         
         # Create PSD lines
@@ -139,6 +139,11 @@ class PlotManager:
         self.maxhold_enabled = False
         self.channel_visible = [True] * 16  # All channels visible by default
         
+        # NEW: Wavelet/spectrogram channel and limits
+        self.wavspec_channel = 0  # Channel to show in wavelet/spectrogram
+        self.wav_vmin, self.wav_vmax = -120, -30
+        self.spec_vmin, self.spec_vmax = -120, -30
+        
     def get_widget(self):
         """Return the Tk widget for embedding in GUI."""
         return self.widget
@@ -163,7 +168,9 @@ class PlotManager:
         
         # Get current limits before clearing
         current_amp = self.ax_time.get_ylim()[1]
-        current_psd_min, current_psd_max = self.ax_psd.get_ylim()
+        # Force PSD to our desired range
+        current_psd_min = -150
+        current_psd_max = -20
         
         # Recreate axes labels and settings
         expected_period_us = 1e6 / fs
@@ -177,7 +184,7 @@ class PlotManager:
         self.ax_psd.set_ylabel("dB")
         self.ax_psd.set_xlabel("Hz")
         self.ax_psd.grid(ls=":")
-        self.ax_psd.set_ylim(current_psd_min, current_psd_max)
+        self.ax_psd.set_ylim(-150, -20)  # Force PSD y-axis to -150 to -20 dB
         
         # Create new time axis
         N0 = int(duration * fs)
@@ -192,11 +199,11 @@ class PlotManager:
         dummy_rows = 64
         self.im_wavelet = self.ax_wav.imshow(
             np.zeros((dummy_rows, N0)), origin="lower", aspect="auto",
-            extent=(0, duration, 1, fs/2), vmin=-60, vmax=0
+            extent=(0, duration, 1, fs/2), vmin=self.wav_vmin, vmax=self.wav_vmax
         )
         self.im_specgram = self.ax_sg.imshow(
             np.zeros((dummy_rows, N0)), origin="lower", aspect="auto",
-            extent=(0, duration, 0, fs/2), vmin=-80, vmax=0
+            extent=(0, duration, 0, fs/2), vmin=self.spec_vmin, vmax=self.spec_vmax
         )
         
         self.psd_lines = [self.ax_psd.plot([], [], lw=.8)[0] for _ in range(16)]
@@ -257,7 +264,7 @@ class PlotManager:
         
     def update_snapshot(self, data: np.ndarray, fs: int, duration: int, 
                        timestamps: np.ndarray = None, nfft: int = 512, 
-                       cheb_db: float = 80.0):
+                       cheb_db: float = 80.0, spec_nperseg: int = 256):
         """
         Update all plots with new data snapshot.
         
@@ -268,6 +275,7 @@ class PlotManager:
             timestamps: (N,) array of hardware timestamps for Δt calculation
             nfft: FFT size for PSD
             cheb_db: Chebyshev window attenuation in dB
+            spec_nperseg: Spectrogram window size
         """
         # Check if buffer needs resizing
         expected_npts = int(duration * fs)
@@ -372,25 +380,45 @@ class PlotManager:
                 # Ensure visibility is maintained during updates
                 ln.set_visible(self.channel_visible[i])
         
-        # Update spectrogram (only if channel 0 is visible)
-        if self.channel_visible[0]:
+        # Update spectrogram and wavelet with selected channel
+        if self.channel_visible[self.wavspec_channel]:
             if data.shape[0] < expected_npts:
                 spec_data = np.zeros(expected_npts)
-                spec_data[-data.shape[0]:] = data[:, 0]
+                spec_data[-data.shape[0]:] = data[:, self.wavspec_channel]
             else:
-                spec_data = data[-expected_npts:, 0]
-                
-            f_s, t_s, Sxx = sps.spectrogram(
-                spec_data, fs=fs, window="hann", nperseg=256, noverlap=128
-            )
-            self.im_specgram.set_data(10*np.log10(Sxx + 1e-12))
-            self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
+                spec_data = data[-expected_npts:, self.wavspec_channel]
             
-            # Update wavelet (using same data as spectrogram for now)
-            self.im_wavelet.set_data(10*np.log10(Sxx + 1e-12))
+            # Calculate 95% overlap
+            noverlap = int(0.95 * spec_nperseg)
+            
+            # Create Chebyshev window for spectrogram
+            try:
+                spec_window = get_window(('chebwin', cheb_db), spec_nperseg, fftbins=False)
+            except:
+                spec_window = np.hamming(spec_nperseg)
+            
+            # Normalize window
+            spec_window = spec_window / np.mean(spec_window)
+            
+            # Compute spectrogram with 95% overlap
+            f_s, t_s, Sxx = sps.spectrogram(
+                spec_data, fs=fs, window=spec_window, 
+                nperseg=spec_nperseg, noverlap=noverlap
+            )
+            
+            # Convert to dB and apply limits
+            Sxx_db = 10*np.log10(Sxx + 1e-12)
+            self.im_specgram.set_data(Sxx_db)
+            self.im_specgram.set_extent((0, duration, f_s[0], f_s[-1]))
+            self.im_specgram.set_clim(self.spec_vmin, self.spec_vmax)
+            
+            # For wavelet, we'll use the same data but different visualization
+            # Using the same 95% overlap concept
+            self.im_wavelet.set_data(Sxx_db)
             self.im_wavelet.set_extent((0, duration, 1, fs/2))
+            self.im_wavelet.set_clim(self.wav_vmin, self.wav_vmax)
         else:
-            # Channel 0 hidden - show empty spectrograms
+            # Selected channel is hidden - show empty spectrograms
             empty = np.zeros((64, expected_npts))
             self.im_specgram.set_data(empty)
             self.im_wavelet.set_data(empty)
@@ -589,4 +617,27 @@ class PlotManager:
                 self.psd_max[i].set_visible(True)
                 
         # Single redraw for all changes
+        self.draw_full()
+        
+    def set_wavspec_channel(self, channel: int):
+        """Set which channel to display in wavelet/spectrogram."""
+        if 0 <= channel < 16:
+            self.wavspec_channel = channel
+            if self.debug:
+                print(f"[PLOT_MANAGER] Wavelet/Spectrogram channel set to: {channel}")
+
+    def set_wavelet_limits(self, min_db: float, max_db: float):
+        """Update wavelet plot limits."""
+        self.wav_vmin, self.wav_vmax = min_db, max_db
+        self.im_wavelet.set_clim(min_db, max_db)
+        if self.debug:
+            print(f"[PLOT_MANAGER] Set wavelet limits: {min_db} to {max_db} dB")
+        self.draw_full()
+
+    def set_specgram_limits(self, min_db: float, max_db: float):
+        """Update spectrogram plot limits."""
+        self.spec_vmin, self.spec_vmax = min_db, max_db
+        self.im_specgram.set_clim(min_db, max_db)
+        if self.debug:
+            print(f"[PLOT_MANAGER] Set spectrogram limits: {min_db} to {max_db} dB")
         self.draw_full()

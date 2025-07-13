@@ -13,6 +13,7 @@ Revision
 • **Fixed blitting**: Proper implementation with animated artists and single figure background
 • **Fixed duration issue**: X-axis now uses expected duration, not snapshot size
 • **Fixed max-hold**: Manual toggle to work around Tkinter callback timing
+• **Added wavelet/spectrogram controls**: Channel selector, power limits, window size
 """
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
@@ -177,8 +178,13 @@ class App(tk.Tk):
         self.amp_scale = tk.Scale(ctrl, from_=0.7, to=-6, resolution=0.01,
                  orient="horizontal", variable=self.amp_log_var,
                  command=self._update_amp_from_log,
-                 showvalue=False)  # Don't show log value on slider
-        self.amp_scale.grid(row=r, column=1, columnspan=4, sticky="we", padx=2)
+                 showvalue=False)  # Don't show log value
+        self.amp_scale.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
+        self.amp_scale.set(np.log10(0.5))  # Explicitly set slider position
+        
+        # Add a label to show the voltage value
+        self.amp_value_label = ttk.Label(ctrl, text="0.500 V")
+        self.amp_value_label.grid(row=r, column=4, sticky="w", padx=2)
         
         self.amp_entry = ttk.Entry(ctrl, textvariable=self.amp_var, width=8)
         self.amp_entry.grid(row=r, column=5, sticky="we", padx=2)
@@ -190,8 +196,9 @@ class App(tk.Tk):
         ttk.Label(ctrl, text="NFFT").grid(row=r, column=0, sticky="e")
         self.nfft_var = tk.IntVar(value=512)
         initial_max = int(self.fs_var.get()) * int(self.dur_var.get())
-        self.nfft_sld = ttk.Scale(
+        self.nfft_sld = tk.Scale(
             ctrl, from_=32, to=initial_max, variable=self.nfft_var,
+            orient="horizontal", showvalue=False,
             command=lambda v: (self.nfft_var.set(int(float(v))),
                                self._sig_update(fft_pts=int(float(v)))))
         self.nfft_sld.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
@@ -205,37 +212,45 @@ class App(tk.Tk):
             self.nfft_label.config(text=str(val))
             self._sig_update(fft_pts=val)
         self.nfft_sld.config(command=update_nfft_label)
+        self.nfft_sld.set(512)  # Explicitly set initial position
         r += 1
     
         # Chebyshev attenuation
         ttk.Label(ctrl, text="Cheb atten (dB)").grid(row=r, column=0, sticky="e")
         self.cheb_var = tk.DoubleVar(value=80.0)
-        ttk.Scale(ctrl, from_=40, to=120, variable=self.cheb_var,
+        self.cheb_scale = tk.Scale(ctrl, from_=40, to=120, orient="horizontal",
+                  variable=self.cheb_var,
                   command=lambda v: (self.cheb_var.set(float(v)),
-                                     self._sig_update(cheb_atten_db=float(v))))\
-            .grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
+                                     self._sig_update(cheb_atten_db=float(v))),
+                  showvalue=False)
+        self.cheb_scale.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
+        self.cheb_scale.set(80.0)  # Explicitly set slider position
         ttk.Entry(ctrl, textvariable=self.cheb_var, width=6)\
             .grid(row=r, column=4, sticky="we", padx=2)
         r += 1
     
         # PSD limits
         ttk.Label(ctrl, text="PSD min (dB)").grid(row=r, column=0, sticky="e")
-        self.psd_lo = tk.DoubleVar(value=-130)
-        tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
-                 variable=self.psd_lo,
+        self.psd_lo = tk.DoubleVar(value=-150)
+        self.psd_lo_scale = tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
+                 variable=self.psd_lo, showvalue=False,
                  command=lambda v: (self.psd_lo.set(float(v)),
-                                    self._enforce_psd(lo=True)))\
-            .grid(row=r, column=1, sticky="we", padx=2)
-        ttk.Entry(ctrl, textvariable=self.psd_lo, width=6)\
-            .grid(row=r, column=2, sticky="we", padx=2)
+                                    self._enforce_psd(lo=True)))
+        self.psd_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
+        self.psd_lo_scale.set(-150)  # Explicitly set slider position
+        psd_lo_entry = ttk.Entry(ctrl, textvariable=self.psd_lo, width=6)
+        psd_lo_entry.grid(row=r, column=2, sticky="we", padx=2)
+        psd_lo_entry.bind('<Return>', lambda e: (self.psd_lo_scale.set(self.psd_lo.get()), self._enforce_psd(lo=True)))
+        psd_lo_entry.bind('<FocusOut>', lambda e: (self.psd_lo_scale.set(self.psd_lo.get()), self._enforce_psd(lo=True)))
     
         ttk.Label(ctrl, text="PSD max (dB)").grid(row=r, column=3, sticky="e")
-        self.psd_hi = tk.DoubleVar(value=0)
-        tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
-                 variable=self.psd_hi,
+        self.psd_hi = tk.DoubleVar(value=-20)
+        self.psd_hi_scale = tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
+                 variable=self.psd_hi, showvalue=False,
                  command=lambda v: (self.psd_hi.set(float(v)),
-                                    self._enforce_psd(lo=False)))\
-            .grid(row=r, column=4, sticky="we", padx=2)
+                                    self._enforce_psd(lo=False)))
+        self.psd_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
+        self.psd_hi_scale.set(-20)  # Explicitly set slider position
         ttk.Entry(ctrl, textvariable=self.psd_hi, width=6)\
             .grid(row=r, column=5, sticky="we", padx=2)
     
@@ -296,6 +311,92 @@ class App(tk.Tk):
                    command=self._select_all_channels).grid(row=0, column=0, pady=1)
         ttk.Button(btn_frame, text="None", width=5,
                    command=self._select_no_channels).grid(row=1, column=0, pady=1)
+        r += 1
+
+        # NEW: Wavelet/Spectrogram channel selector
+        ttk.Label(ctrl, text="Wav/Spec Ch").grid(row=r, column=0, sticky="e")
+        self.wavspec_ch_var = tk.IntVar(value=0)
+        self.wavspec_ch_cb = ttk.Combobox(
+            ctrl, 
+            textvariable=self.wavspec_ch_var,
+            values=list(range(16)),
+            state="readonly",
+            width=4
+        )
+        self.wavspec_ch_cb.grid(row=r, column=1, sticky="w", padx=2)
+        self.wavspec_ch_cb.current(0)
+        self.wavspec_ch_cb.bind('<<ComboboxSelected>>', 
+                                lambda e: self.plots.set_wavspec_channel(self.wavspec_ch_var.get()))
+
+        # NEW: Spectrogram window size
+        ttk.Label(ctrl, text="Spec Win").grid(row=r, column=2, sticky="e")
+        self.spec_win_var = tk.IntVar(value=256)
+        initial_max_win = int(self.fs_var.get()) * int(self.dur_var.get()) // 2
+        self.spec_win_sld = tk.Scale(
+            ctrl, from_=32, to=initial_max_win, variable=self.spec_win_var,
+            orient="horizontal", showvalue=False,
+            command=lambda v: (self.spec_win_var.set(int(float(v))),
+                               self.spec_win_label.config(text=str(int(float(v))))))
+        self.spec_win_sld.grid(row=r, column=3, columnspan=2, sticky="we", padx=2)
+        self.spec_win_sld.set(256)  # Explicitly set initial position
+        self.spec_win_label = ttk.Label(ctrl, text="256")
+        self.spec_win_label.grid(row=r, column=5, sticky="w", padx=2)
+        r += 1
+
+        # NEW: Wavelet power limits
+        ttk.Label(ctrl, text="Wav min (dB)").grid(row=r, column=0, sticky="e")
+        self.wav_lo = tk.DoubleVar(value=-120)
+        self.wav_lo_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
+                 variable=self.wav_lo, showvalue=False,
+                 command=lambda v: (self.wav_lo.set(float(v)),
+                                    self._enforce_wav_limits(lo=True)))
+        self.wav_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
+        self.wav_lo_scale.set(-120)  # Explicitly set slider position
+        ttk.Entry(ctrl, textvariable=self.wav_lo, width=6)\
+            .grid(row=r, column=2, sticky="we", padx=2)
+
+        ttk.Label(ctrl, text="Wav max (dB)").grid(row=r, column=3, sticky="e")
+        self.wav_hi = tk.DoubleVar(value=-30)
+        self.wav_hi_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
+                 variable=self.wav_hi, showvalue=False,
+                 command=lambda v: (self.wav_hi.set(float(v)),
+                                    self._enforce_wav_limits(lo=False)))
+        self.wav_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
+        self.wav_hi_scale.set(-30)  # Explicitly set slider position
+        ttk.Entry(ctrl, textvariable=self.wav_hi, width=6)\
+            .grid(row=r, column=5, sticky="we", padx=2)
+        r += 1
+
+        # NEW: Spectrogram power limits
+        ttk.Label(ctrl, text="Spec min (dB)").grid(row=r, column=0, sticky="e")
+        self.spec_lo = tk.DoubleVar(value=-120)
+        self.spec_lo_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
+                 variable=self.spec_lo, showvalue=False,
+                 command=lambda v: (self.spec_lo.set(float(v)),
+                                    self._enforce_spec_limits(lo=True)))
+        self.spec_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
+        self.spec_lo_scale.set(-120)  # Explicitly set slider position
+        ttk.Entry(ctrl, textvariable=self.spec_lo, width=6)\
+            .grid(row=r, column=2, sticky="we", padx=2)
+
+        ttk.Label(ctrl, text="Spec max (dB)").grid(row=r, column=3, sticky="e")
+        self.spec_hi = tk.DoubleVar(value=-30)
+        self.spec_hi_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
+                 variable=self.spec_hi, showvalue=False,
+                 command=lambda v: (self.spec_hi.set(float(v)),
+                                    self._enforce_spec_limits(lo=False)))
+        self.spec_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
+        self.spec_hi_scale.set(-30)  # Explicitly set slider position
+        ttk.Entry(ctrl, textvariable=self.spec_hi, width=6)\
+            .grid(row=r, column=5, sticky="we", padx=2)
+
+        # Apply initial plot limits to PlotManager
+        self.plots.set_psd_limits(self.psd_lo.get(), self.psd_hi.get())
+        self.plots.set_wavelet_limits(self.wav_lo.get(), self.wav_hi.get())
+        self.plots.set_specgram_limits(self.spec_lo.get(), self.spec_hi.get())
+        self.plots.set_amplitude_limits(self.amp_var.get())
+        # Update initial amplitude label
+        self.amp_value_label.config(text="0.500 V")
 
     def _on_maxhold_toggle(self):
         """Handle max-hold toggle using PlotManager."""
@@ -332,6 +433,11 @@ class App(tk.Tk):
         """Update amplitude from log scale slider using PlotManager."""
         linear_val = 10 ** float(log_val)
         self.amp_var.set(linear_val)
+        # Update the voltage display label
+        if linear_val >= 0.001:
+            self.amp_value_label.config(text=f"{linear_val:.3f} V")
+        else:
+            self.amp_value_label.config(text=f"{linear_val:.3e} V")
         self.plots.set_amplitude_limits(linear_val)
             
     def _update_amp_from_entry(self, event=None):
@@ -341,6 +447,11 @@ class App(tk.Tk):
             val = max(1e-6, min(5.0, val))
             self.amp_var.set(val)
             self.amp_log_var.set(np.log10(val))
+            # Update the voltage display label
+            if val >= 0.001:
+                self.amp_value_label.config(text=f"{val:.3f} V")
+            else:
+                self.amp_value_label.config(text=f"{val:.3e} V")
             self.plots.set_amplitude_limits(val)
         except ValueError:
             pass
@@ -429,9 +540,18 @@ class App(tk.Tk):
         self.nfft_sld.configure(to=total_samples)
         if self.nfft_var.get() > total_samples:
             self.nfft_var.set(total_samples)
+            self.nfft_sld.set(total_samples)  # Update slider position
             self.nfft_label.config(text=str(total_samples))
         else:
             self.nfft_label.config(text=str(self.nfft_var.get()))
+        
+        # NEW: Update spectrogram window size slider maximum
+        spec_max_win = total_samples // 2
+        self.spec_win_sld.configure(to=spec_max_win)
+        if self.spec_win_var.get() > spec_max_win:
+            self.spec_win_var.set(spec_max_win)
+            self.spec_win_sld.set(spec_max_win)  # Update slider position
+            self.spec_win_label.config(text=str(spec_max_win))
         
         # Update the status in console
         self.ser_console.configure(state="normal")
@@ -449,13 +569,39 @@ class App(tk.Tk):
     def _enforce_psd(self, lo=True):
         if lo and self.psd_lo.get() >= self.psd_hi.get():
             self.psd_lo.set(self.psd_hi.get() - 1)
+            self.psd_lo_scale.set(self.psd_lo.get())  # Update slider
         elif not lo and self.psd_hi.get() <= self.psd_lo.get():
             self.psd_hi.set(self.psd_lo.get() + 1)
+            self.psd_hi_scale.set(self.psd_hi.get())  # Update slider
     
         # Apply the new limits using PlotManager
         if hasattr(self, "plots"):
             new_lo, new_hi = self.psd_lo.get(), self.psd_hi.get()
             self.plots.set_psd_limits(new_lo, new_hi)
+    
+    def _enforce_wav_limits(self, lo=True):
+        """Enforce wavelet power limits."""
+        if lo and self.wav_lo.get() >= self.wav_hi.get():
+            self.wav_lo.set(self.wav_hi.get() - 1)
+            self.wav_lo_scale.set(self.wav_lo.get())  # Update slider
+        elif not lo and self.wav_hi.get() <= self.wav_lo.get():
+            self.wav_hi.set(self.wav_lo.get() + 1)
+            self.wav_hi_scale.set(self.wav_hi.get())  # Update slider
+        
+        if hasattr(self, "plots"):
+            self.plots.set_wavelet_limits(self.wav_lo.get(), self.wav_hi.get())
+
+    def _enforce_spec_limits(self, lo=True):
+        """Enforce spectrogram power limits."""
+        if lo and self.spec_lo.get() >= self.spec_hi.get():
+            self.spec_lo.set(self.spec_hi.get() - 1)
+            self.spec_lo_scale.set(self.spec_lo.get())  # Update slider
+        elif not lo and self.spec_hi.get() <= self.spec_lo.get():
+            self.spec_hi.set(self.spec_lo.get() + 1)
+            self.spec_hi_scale.set(self.spec_hi.get())  # Update slider
+        
+        if hasattr(self, "plots"):
+            self.plots.set_specgram_limits(self.spec_lo.get(), self.spec_hi.get())
     
     def _reset_maxhold(self):
         """Reset max-hold using PlotManager."""
@@ -848,7 +994,8 @@ class App(tk.Tk):
             duration=duration,
             timestamps=timestamps,
             nfft=self.nfft_var.get(),
-            cheb_db=self.cheb_var.get()
+            cheb_db=self.cheb_var.get(),
+            spec_nperseg=self.spec_win_var.get()
         )
         
         self.after(16, self._animate_plots)
