@@ -16,7 +16,7 @@ Revision
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
 # Set to 1 to enable debug messages, 0 to disable
-DEBUG = 1
+DEBUG = 0
 # ──────────────────────────────────────────────────────────────────
 
 import sys
@@ -188,8 +188,9 @@ class App(tk.Tk):
         # NFFT
         ttk.Label(ctrl, text="NFFT").grid(row=r, column=0, sticky="e")
         self.nfft_var = tk.IntVar(value=512)
+        initial_max = int(self.fs_var.get()) * int(self.dur_var.get())
         self.nfft_sld = ttk.Scale(
-            ctrl, from_=32, to=8192, variable=self.nfft_var,
+            ctrl, from_=32, to=initial_max, variable=self.nfft_var,
             command=lambda v: (self.nfft_var.set(int(float(v))),
                                self._sig_update(fft_pts=int(float(v)))))
         self.nfft_sld.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
@@ -307,12 +308,11 @@ class App(tk.Tk):
 
         # Handle NFFT clamping
         if 'fft_pts' in kwargs:
-            total    = self.sig_cfg.sample_rate * self.sig_cfg.buf_secs
-            max_pow2 = 1 << (total.bit_length() - 1)
-            if self.nfft_var.get() > max_pow2:
-                self.nfft_var.set(max_pow2)
+            total = self.sig_cfg.sample_rate * self.sig_cfg.buf_secs
+            if self.nfft_var.get() > total:
+                self.nfft_var.set(total)
             if hasattr(self, "nfft_sld"):
-                self.nfft_sld.configure(to=max_pow2)
+                self.nfft_sld.configure(to=total)
                 
     # update amplitude limits (symmetric ±)
     def _update_amp_from_log(self, log_val):
@@ -413,11 +413,10 @@ class App(tk.Tk):
         
         # Update NFFT slider maximum based on new buffer size
         total_samples = new_fs * new_dur
-        max_pow2 = 1 << (total_samples.bit_length() - 1)
-        self.nfft_sld.configure(to=max_pow2)
-        if self.nfft_var.get() > max_pow2:
-            self.nfft_var.set(max_pow2)
-            self.nfft_label.config(text=str(max_pow2))
+        self.nfft_sld.configure(to=total_samples)
+        if self.nfft_var.get() > total_samples:
+            self.nfft_var.set(total_samples)
+            self.nfft_label.config(text=str(total_samples))
         else:
             self.nfft_label.config(text=str(self.nfft_var.get()))
         

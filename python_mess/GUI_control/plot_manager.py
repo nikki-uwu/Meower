@@ -304,13 +304,18 @@ class PlotManager:
             win = get_window(('chebwin', cheb_db), nfft, fftbins=False)
         except:
             win = np.hamming(nfft)
+        
+        # Normalize window by its mean
+        win = win / np.mean(win)
             
         freqs = np.fft.rfftfreq(nfft, d=1/fs)
         
         for idx in range(16):
             if len(data) >= nfft:
                 seg = data[-nfft:, idx] * win
-                psd = 20*np.log10(np.abs(np.fft.rfft(seg)) + 1e-15)
+                # Perform FFT with normalization by length
+                fft_result = np.fft.rfft(seg) / nfft
+                psd = 20*np.log10(np.abs(fft_result) + 1e-15)
                 self.psd_lines[idx].set_data(freqs, psd)
                 # Ensure visibility is maintained
                 self.psd_lines[idx].set_visible(self.channel_visible[idx])
