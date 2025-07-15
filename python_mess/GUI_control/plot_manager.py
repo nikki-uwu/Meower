@@ -1,5 +1,6 @@
 """plot_manager.py - Matplotlib Plot Management for DIY EEG GUI
 Encapsulates all matplotlib complexity to simplify main GUI
+Evangelion/NERV Style Edition
 """
 
 import numpy as np
@@ -9,15 +10,37 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
-# Dark palette for Matplotlib
+# NERV/Evangelion color palette
+NERV_BLACK = "#000000"
+NERV_AMBER = "#FFB000"  # Primary amber/yellow
+NERV_ORANGE = "#FF6B00"  # Secondary orange
+NERV_RED = "#FF0000"    # Alert/active red
+NERV_GREEN = "#00FF00"  # Success/status green
+NERV_GRID = "#333333"   # Subtle grid color
+NERV_TEXT = "#FFB000"   # Text color
+
+# Configure matplotlib for NERV aesthetic
 matplotlib.rcParams.update({
-    "axes.facecolor": "#1E1E1E",
-    "axes.edgecolor": "#D4D4D4",
-    "axes.labelcolor": "#D4D4D4",
-    "xtick.color": "#D4D4D4",
-    "ytick.color": "#D4D4D4",
-    "figure.facecolor": "#1E1E1E",
+    "axes.facecolor": NERV_BLACK,
+    "axes.edgecolor": NERV_AMBER,
+    "axes.labelcolor": NERV_AMBER,
+    "xtick.color": NERV_AMBER,
+    "ytick.color": NERV_AMBER,
+    "figure.facecolor": NERV_BLACK,
+    "grid.color": NERV_GRID,
+    "grid.linestyle": "-",
+    "grid.linewidth": 0.5,
+    "grid.alpha": 0.7,
+    "font.family": "monospace",
+    "font.size": 9,
+    "axes.linewidth": 1.5,
+    "xtick.major.width": 1.2,
+    "ytick.major.width": 1.2,
+    "xtick.major.size": 4,
+    "ytick.major.size": 4,
 })
 
 
@@ -70,9 +93,10 @@ class PlotManager:
     - Background caching for fast blitting
     - Dynamic buffer resizing
     - Plot updates and limits
+    - NERV/Evangelion visual style
     """
     
-    def __init__(self, parent_frame, bg_color="#1E1E1E", debug=False):
+    def __init__(self, parent_frame, bg_color="#000000", debug=False, style="evangelion"):
         """
         Initialize the plot manager.
         
@@ -80,14 +104,24 @@ class PlotManager:
             parent_frame: Tkinter frame to contain the plots
             bg_color: Background color for the canvas
             debug: Enable debug output
+            style: Visual style ("evangelion" or "default")
         """
         self.parent = parent_frame
         self.bg_color = bg_color
         self.debug = debug
+        self.style = style
+        
+        # Initialize stored limits
+        self._psd_min = -150
+        self._psd_max = -20
+        self._amp_limit = 0.5
         
         # Create figure with 5 subplots
-        self.fig = Figure(constrained_layout=True, dpi=100)
-        g = self.fig.add_gridspec(5, 1, height_ratios=[1, 1, 1, 1, 1])
+        self.fig = Figure(facecolor=NERV_BLACK, dpi=100)
+        # Use tight layout with small padding for NERV aesthetic
+        g = self.fig.add_gridspec(5, 1, height_ratios=[1, 1, 1, 1, 1], 
+                                  hspace=0.15, left=0.08, right=0.98, 
+                                  top=0.98, bottom=0.05)
         
         self.ax_dt = self.fig.add_subplot(g[0])
         self.ax_time = self.fig.add_subplot(g[1])
@@ -99,49 +133,57 @@ class PlotManager:
         self.ax_wavelet = self.ax_wav
         self.ax_specgram = self.ax_sg
         
-        # Configure axes
-        self.ax_dt.set_ylabel("Δt [µs]")
-        self.ax_dt.grid(ls=":")
-        # Set initial Δt limits based on default 250Hz
+        # Configure axes with NERV style
+        self._style_axis(self.ax_dt, "TIMING DEVIATION [µS]")
+        self._style_axis(self.ax_time, "AMPLITUDE [V]")
+        self._style_axis(self.ax_wav, "FREQUENCY [HZ]")
+        self._style_axis(self.ax_sg, "FREQUENCY [HZ]")
+        self._style_axis(self.ax_psd, "POWER [DB]", xlabel="FREQUENCY [HZ]")
+        
+        # Set initial limits
         expected_period_us = 1e6 / 250  # 4000 µs for 250Hz
         y_min = expected_period_us - 100
         y_max = expected_period_us + 100
         if y_min < 0:
             y_min = 0
         self.ax_dt.set_ylim(y_min, y_max)
-        self.ax_time.set_ylabel("V")
-        self.ax_time.grid(ls=":")
-        self.ax_time.set_ylim(-0.5, 0.5)  # Initial amplitude limits
-        self.ax_wav.set_ylabel("f [Hz]")
-        self.ax_sg.set_ylabel("f [Hz]")
-        self.ax_psd.set_ylabel("dB")
-        self.ax_psd.set_xlabel("Hz")
-        self.ax_psd.grid(ls=":")
-        self.ax_psd.set_ylim(-150, -20)  # Initial PSD limits
+        self.ax_time.set_ylim(-0.5, 0.5)
+        self.ax_psd.set_ylim(-150, -20)
         
         # Initialize with dummy data
         N0 = 100
         xs = np.arange(N0)
         
-        # Create line artists
-        self.dt_line, = self.ax_dt.plot(xs, np.zeros(N0), lw=.8)
-        self.time_lines = [self.ax_time.plot(xs, np.zeros(N0), lw=.8)[0] 
-                          for _ in range(16)]
+        # Create line artists with NERV colors
+        self.dt_line, = self.ax_dt.plot(xs, np.zeros(N0), lw=1.2, color=NERV_GREEN)
         
-        # Create image artists
+        # Use a color palette for the 16 channels
+        self.channel_colors = self._generate_channel_colors()
+        self.time_lines = [self.ax_time.plot(xs, np.zeros(N0), lw=1.0, 
+                                             color=self.channel_colors[i], alpha=0.9)[0] 
+                          for i in range(16)]
+        
+        # Create image artists with NERV colormap
+        self.nerv_cmap = self._create_nerv_colormap()
         self.im_wavelet = self.ax_wav.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto", 
-            extent=(0, N0, 1, 250), vmin=-120, vmax=-30
+            extent=(0, N0, 1, 250), vmin=-120, vmax=-30,
+            cmap=self.nerv_cmap, interpolation='bilinear'
         )
         self.im_specgram = self.ax_sg.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto",
-            extent=(0, N0, 0, 250), vmin=-120, vmax=-30
+            extent=(0, N0, 0, 250), vmin=-120, vmax=-30,
+            cmap=self.nerv_cmap, interpolation='bilinear'
         )
         
         # Create PSD lines
-        self.psd_lines = [self.ax_psd.plot([], [], lw=.8)[0] for _ in range(16)]
-        self.psd_max = [self.ax_psd.plot([], [], lw=.8, ls="--",
-                                         color=self.psd_lines[i].get_color())[0]
+        self.psd_lines = [self.ax_psd.plot([], [], lw=1.0, 
+                                          color=self.channel_colors[i], alpha=0.9)[0] 
+                         for i in range(16)]
+        # Set initial PSD x-axis to positive frequencies only
+        self.ax_psd.set_xlim(0, 125)  # 0 to fs/2 for initial 250Hz
+        self.psd_max = [self.ax_psd.plot([], [], lw=1.2, ls="--",
+                                        color=self.channel_colors[i], alpha=0.6)[0]
                        for i in range(16)]
         
         # Mark all artists as animated for blitting
@@ -156,7 +198,7 @@ class PlotManager:
         # Create canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=parent_frame)
         self.widget = self.canvas.get_tk_widget()
-        self.widget.configure(bg=bg_color, highlightthickness=0)
+        self.widget.configure(bg=NERV_BLACK, highlightthickness=0)
         
         # Background cache for blitting
         self._bg_cache = None
@@ -179,11 +221,83 @@ class PlotManager:
         self.maxhold_enabled = False
         self.channel_visible = [True] * 16  # All channels visible by default
         
-        # NEW: Wavelet/spectrogram channel and limits
+        # Wavelet/spectrogram channel and limits
         self.wavspec_channel = 0  # Channel to show in wavelet/spectrogram
         self.wav_vmin, self.wav_vmax = -120, -30
         self.spec_vmin, self.spec_vmax = -120, -30
         
+    def _style_axis(self, ax, ylabel, xlabel=None):
+        """Apply NERV styling to an axis"""
+        ax.set_facecolor(NERV_BLACK)
+        ax.set_ylabel(ylabel.upper(), fontsize=10, fontweight='bold', color=NERV_AMBER)
+        if xlabel:
+            ax.set_xlabel(xlabel.upper(), fontsize=10, fontweight='bold', color=NERV_AMBER)
+        
+        # Configure spines (borders)
+        for spine in ax.spines.values():
+            spine.set_color(NERV_AMBER)
+            spine.set_linewidth(1.5)
+        
+        # Configure grid
+        ax.grid(True, color=NERV_GRID, linestyle='-', linewidth=0.5, alpha=0.5)
+        
+        # Configure ticks
+        ax.tick_params(colors=NERV_AMBER, which='both', labelsize=8)
+        
+        # Make all text uppercase
+        for label in ax.get_xticklabels() + ax.get_yticklabels():
+            label.set_fontfamily('monospace')
+            
+    def _generate_channel_colors(self):
+        """Generate NERV-style colors for 16 channels"""
+        # Use variations of amber, orange, and green
+        base_colors = [
+            "#FFB000",  # Amber
+            "#FF8C00",  # Dark orange
+            "#FFD700",  # Gold
+            "#FFA500",  # Orange
+            "#00FF00",  # Green
+            "#00FF7F",  # Spring green
+            "#7FFF00",  # Chartreuse
+            "#ADFF2F",  # Green yellow
+        ]
+        # Repeat and vary brightness
+        colors = []
+        for i in range(16):
+            base = base_colors[i % len(base_colors)]
+            # Vary brightness slightly
+            factor = 0.8 + (i % 4) * 0.1
+            colors.append(self._adjust_color_brightness(base, factor))
+        return colors
+        
+    def _adjust_color_brightness(self, hex_color, factor):
+        """Adjust color brightness by factor"""
+        rgb = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+        rgb = tuple(min(255, int(c * factor)) for c in rgb)
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
+        
+    def _create_nerv_colormap(self):
+        """Create NERV-style colormap for spectrograms"""
+        # Black -> Dark amber -> Amber -> Bright amber/yellow
+        colors = [
+            (0.0, NERV_BLACK),
+            (0.25, '#331100'),  # Very dark amber
+            (0.5, '#663300'),   # Dark amber
+            (0.75, NERV_AMBER), # Amber
+            (1.0, '#FFFF00')    # Bright yellow
+        ]
+        
+        positions = [c[0] for c in colors]
+        colors_rgb = [matplotlib.colors.hex2color(c[1]) for c in colors]
+        
+        cdict = {
+            'red': [(p, c[0], c[0]) for p, c in zip(positions, colors_rgb)],
+            'green': [(p, c[1], c[1]) for p, c in zip(positions, colors_rgb)],
+            'blue': [(p, c[2], c[2]) for p, c in zip(positions, colors_rgb)]
+        }
+        
+        return matplotlib.colors.LinearSegmentedColormap('nerv', cdict)
+    
     def get_widget(self):
         """Return the Tk widget for embedding in GUI."""
         return self.widget
@@ -207,48 +321,52 @@ class PlotManager:
         self.ax_psd.clear()
         
         # Get current limits before clearing
-        current_amp = self.ax_time.get_ylim()[1]
-        # Force PSD to our desired range
-        current_psd_min = -150
-        current_psd_max = -20
+        current_amp = getattr(self, '_amp_limit', 0.5)
+        current_psd_min = getattr(self, '_psd_min', -150)
+        current_psd_max = getattr(self, '_psd_max', -20)
         
-        # Recreate axes labels and settings
+        # Recreate axes labels and settings with NERV style
         expected_period_us = 1e6 / fs
-        self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
-        self.ax_dt.grid(ls=":")
-        self.ax_time.set_ylabel("V")
-        self.ax_time.grid(ls=":")
+        self._style_axis(self.ax_dt, f"TIMING DEVIATION [µS] (EXPECT: {expected_period_us:.0f})")
+        self._style_axis(self.ax_time, "AMPLITUDE [V]")
+        self._style_axis(self.ax_wav, "FREQUENCY [HZ]")
+        self._style_axis(self.ax_sg, "FREQUENCY [HZ]")
+        self._style_axis(self.ax_psd, "POWER [DB]", xlabel="FREQUENCY [HZ]")
+        
+        # Apply the stored limits
         self.ax_time.set_ylim(-current_amp, current_amp)
-        self.ax_wav.set_ylabel("f [Hz]")
-        self.ax_sg.set_ylabel("f [Hz]")
-        self.ax_psd.set_ylabel("dB")
-        self.ax_psd.set_xlabel("Hz")
-        self.ax_psd.grid(ls=":")
-        self.ax_psd.set_ylim(-150, -20)  # Force PSD y-axis to -150 to -20 dB
+        self.ax_psd.set_ylim(current_psd_min, current_psd_max)
+        # Set PSD x-axis to positive frequencies only
+        self.ax_psd.set_xlim(0, fs/2)
         
         # Create new time axis
         N0 = int(duration * fs)
         xs_sec = np.arange(N0) / fs  # X-axis in seconds
         
-        # Recreate all artists
-        self.dt_line, = self.ax_dt.plot(xs_sec, np.zeros(N0), lw=.8)
-        self.time_lines = [self.ax_time.plot(xs_sec, np.zeros(N0), lw=.8)[0]
-                          for _ in range(16)]
+        # Recreate all artists with NERV colors
+        self.dt_line, = self.ax_dt.plot(xs_sec, np.zeros(N0), lw=1.2, color=NERV_GREEN)
+        self.time_lines = [self.ax_time.plot(xs_sec, np.zeros(N0), lw=1.0,
+                                            color=self.channel_colors[i], alpha=0.9)[0]
+                          for i in range(16)]
         
         # Create dummy images with proper extent
         dummy_rows = 64
         self.im_wavelet = self.ax_wav.imshow(
             np.zeros((dummy_rows, N0)), origin="lower", aspect="auto",
-            extent=(0, duration, 1, fs/2), vmin=self.wav_vmin, vmax=self.wav_vmax
+            extent=(0, duration, 1, fs/2), vmin=self.wav_vmin, vmax=self.wav_vmax,
+            cmap=self.nerv_cmap, interpolation='bilinear'
         )
         self.im_specgram = self.ax_sg.imshow(
             np.zeros((dummy_rows, N0)), origin="lower", aspect="auto",
-            extent=(0, duration, 0, fs/2), vmin=self.spec_vmin, vmax=self.spec_vmax
+            extent=(0, duration, 0, fs/2), vmin=self.spec_vmin, vmax=self.spec_vmax,
+            cmap=self.nerv_cmap, interpolation='bilinear'
         )
         
-        self.psd_lines = [self.ax_psd.plot([], [], lw=.8)[0] for _ in range(16)]
-        self.psd_max = [self.ax_psd.plot([], [], lw=.8, ls="--",
-                                         color=self.psd_lines[i].get_color())[0]
+        self.psd_lines = [self.ax_psd.plot([], [], lw=1.0,
+                                          color=self.channel_colors[i], alpha=0.9)[0] 
+                         for i in range(16)]
+        self.psd_max = [self.ax_psd.plot([], [], lw=1.2, ls="--",
+                                        color=self.channel_colors[i], alpha=0.6)[0]
                        for i in range(16)]
         
         # Mark new artists as animated
@@ -272,15 +390,16 @@ class PlotManager:
         # Update xlimits
         for ax in (self.ax_time, self.ax_wavelet, self.ax_specgram, self.ax_dt):
             ax.set_xlim(0, duration)
-            ax.set_xlabel("Time (s)")
+            ax.set_xlabel("TIME [S]", fontsize=10, fontweight='bold', color=NERV_AMBER)
         
         # Add reference line for expected period in Δt plot
         expected_period_us = 1e6 / fs
         self._dt_expected_line = self.ax_dt.axhline(
             y=expected_period_us, 
-            color='gray', 
+            color=NERV_ORANGE, 
             linestyle='--', 
-            alpha=0.5,
+            alpha=0.7,
+            linewidth=1.5,
             animated=True
         )
         
@@ -339,8 +458,6 @@ class PlotManager:
             try:
                 # Calculate time differences between consecutive samples
                 # Hardware timestamps are in units of 8 microseconds
-                # (1 unit = 8μs, 2 units = 16μs, etc.)
-                # So multiply by 8 to get actual microseconds
                 time_diffs = np.diff(timestamps.astype(np.int64))
                 
                 # Handle 32-bit wraparound
@@ -378,16 +495,18 @@ class PlotManager:
                 if not hasattr(self, '_dt_expected_line'):
                     self._dt_expected_line = self.ax_dt.axhline(
                         y=expected_period_us, 
-                        color='gray', 
+                        color=NERV_ORANGE, 
                         linestyle='--', 
-                        alpha=0.5,
+                        alpha=0.7,
+                        linewidth=1.5,
                         animated=True
                     )
                 else:
                     self._dt_expected_line.set_ydata([expected_period_us, expected_period_us])
                     
                 # Update axis label to show expected period
-                self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
+                self.ax_dt.set_ylabel(f"TIMING DEVIATION [µS] (EXPECT: {expected_period_us:.0f})", 
+                                     fontsize=10, fontweight='bold', color=NERV_AMBER)
             except Exception as e:
                 if self.debug:
                     print(f"[PLOT_MANAGER] Error updating Δt plot: {e}")
@@ -404,7 +523,8 @@ class PlotManager:
             if y_min < 0:
                 y_min = 0
             self.ax_dt.set_ylim(y_min, y_max)
-            self.ax_dt.set_ylabel(f"Δt [µs] (expect: {expected_period_us:.0f})")
+            self.ax_dt.set_ylabel(f"TIMING DEVIATION [µS] (EXPECT: {expected_period_us:.0f})",
+                                 fontsize=10, fontweight='bold', color=NERV_AMBER)
         
         # Update time-domain plots
         if data.shape[0] < xs_sec.size:
@@ -512,10 +632,9 @@ class PlotManager:
         
         for idx in range(16):
             if len(data) >= nfft:
-                # Remove DC before FFT
+                # Get segment without removing DC (keep original signal)
                 seg = data[-nfft:, idx]
-                seg_dc_removed = seg - np.mean(seg)
-                seg_windowed = seg_dc_removed * win
+                seg_windowed = seg * win
                 # Perform FFT with normalization by length
                 fft_result = np.fft.rfft(seg_windowed) / nfft
                 psd = 20*np.log10(np.abs(fft_result) + 1e-20)
@@ -549,6 +668,7 @@ class PlotManager:
         
     def set_amplitude_limits(self, volts: float):
         """Update time plot y-axis limits."""
+        self._amp_limit = volts
         self.ax_time.set_ylim(-volts, volts)
         if self.debug:
             print(f"[PLOT_MANAGER] Set amplitude limits: ±{volts}V")
@@ -556,6 +676,8 @@ class PlotManager:
         
     def set_psd_limits(self, min_db: float, max_db: float):
         """Update PSD plot limits."""
+        self._psd_min = min_db
+        self._psd_max = max_db
         self.ax_psd.set_ylim(min_db, max_db)
         if self.debug:
             print(f"[PLOT_MANAGER] Set PSD limits: {min_db} to {max_db} dB")
@@ -640,15 +762,15 @@ class PlotManager:
         """Update axes labels if needed."""
         if labels:
             if 'dt' in labels:
-                self.ax_dt.set_ylabel(labels['dt'])
+                self.ax_dt.set_ylabel(labels['dt'].upper())
             if 'time' in labels:
-                self.ax_time.set_ylabel(labels['time'])
+                self.ax_time.set_ylabel(labels['time'].upper())
             if 'wav' in labels:
-                self.ax_wav.set_ylabel(labels['wav'])
+                self.ax_wav.set_ylabel(labels['wav'].upper())
             if 'sg' in labels:
-                self.ax_sg.set_ylabel(labels['sg'])
+                self.ax_sg.set_ylabel(labels['sg'].upper())
             if 'psd' in labels:
-                self.ax_psd.set_ylabel(labels['psd'])
+                self.ax_psd.set_ylabel(labels['psd'].upper())
                 
     def set_channel_visibility(self, channel: int, visible: bool):
         """Set visibility for a specific channel (0-15)."""

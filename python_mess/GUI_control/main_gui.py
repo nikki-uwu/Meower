@@ -1,19 +1,14 @@
-"""main_gui.py  ·  DIY EEG / BCI Board Control
+"""main_gui.py  ·  DIY EEG / BCI Board Control - NERV Interface
 Python 3.12  ·  Tkinter + Matplotlib  ·  No external deps beyond PySerial & MPL
 Run:  python main_gui.py
 
-Revision
---------
-• **PlotManager extraction**: All matplotlib complexity moved to plot_manager.py
-• **Instant feedback**: figure redraw is scheduled just **40 ms** after the
-  *last* <Configure> event, which feels immediate when you release the
-  window edge.
-• Debounce handler is appended (add="+") so Matplotlib's own resize logic
-  remains active; we only throttle the expensive draw call.
-• **Fixed blitting**: Proper implementation with animated artists and single figure background
-• **Fixed duration issue**: X-axis now uses expected duration, not snapshot size
-• **Fixed max-hold**: Manual toggle to work around Tkinter callback timing
-• **Added wavelet/spectrogram controls**: Channel selector, power limits, window size
+Revision - Evangelion/NERV Style
+--------------------------------
+• **Color scheme**: Black backgrounds, amber/yellow accents, red alerts
+• **Typography**: Monospace all-caps for that technical NERV aesthetic  
+• **Buttons**: Black with amber borders, red glow on hover, orange on press
+• **Sliders**: Minimalist with amber track and handle
+• **Overall**: Technical/military interface inspired by Evangelion
 """
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
@@ -30,7 +25,7 @@ import socket
 import numpy as np
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, font
 from serial_backend import SerialManager
 from udp_backend import UDPManager
 from signal_backend import SignalWorker, SigConfig
@@ -52,7 +47,21 @@ class WiFiWorker(threading.Thread):
 
 # ─────────────────────────── Main GUI ─────────────────────────
 class App(tk.Tk):
-    BG, FG = "#1E1E1E", "#D4D4D4"
+    # NERV/Evangelion Color Scheme
+    BG_PRIMARY = "#000000"      # Pure black background
+    BG_SECONDARY = "#0A0A0A"    # Slightly lighter black for panels
+    FG_PRIMARY = "#FFB000"      # Amber/yellow for primary text
+    FG_SECONDARY = "#FF6B00"    # Orange for secondary elements
+    FG_ACTIVE = "#FF0000"       # Red for active/alert states
+    FG_SUCCESS = "#00FF00"      # Green for success/active
+    BORDER_COLOR = "#FFB000"    # Amber borders
+    BORDER_ACTIVE = "#FF6B00"   # Orange borders when active
+    
+    # Console colors
+    CONSOLE_BG = "#000000"
+    SERIAL_FG = "#00FF00"       # Green terminal style
+    WIFI_FG = "#FFB000"         # Amber for WiFi console
+    
     RESIZE_DELAY_MS = 40  # draw 40 ms after last Configure → instant feel
 
     def __init__(self):
@@ -61,10 +70,14 @@ class App(tk.Tk):
         self.udp = None
         self.sig = None  # Initialize as None, create after GUI vars exist
         
-        self.title("DIY EEG / BCI Board Control")
+        self.title("NERV EEG/BCI INTERFACE - SYNCHRONIZATION MONITOR")
         self.geometry("1600x1000")      # ← initial size
         self.minsize(900, 600)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.configure(bg=self.BG_PRIMARY)
+        
+        # Set up NERV-style fonts
+        self.setup_fonts()
         self._apply_style()
 
         # debouncer handle
@@ -84,8 +97,8 @@ class App(tk.Tk):
 
         # UI columns
         self._build_plot_column()
-        self.ser_console  = self._build_io_block(1, "Serial control", self._serial_controls)
-        self.wifi_console = self._build_io_block(2, "Wi‑Fi control",  self._wifi_controls)
+        self.ser_console  = self._build_io_block(1, "SERIAL INTERFACE", self._serial_controls)
+        self.wifi_console = self._build_io_block(2, "NETWORK CONTROL", self._wifi_controls)
         
         # ------- Signal backend (now safe because fs_var & dur_var exist) --------
         self.sig_cfg = SigConfig(sample_rate=self.fs_var.get(),
@@ -96,39 +109,112 @@ class App(tk.Tk):
         self.sig.start()
         
         # ── console colour scheme ───────────────────────────────────────
-        self.ser_console .configure(bg="#000000", fg="#00ff00", insertbackground="#00ff00")  # green on black
-        self.wifi_console.configure(bg="#000000", fg="#ff8800", insertbackground="#ff8800")  # orange on black
+        self.ser_console .configure(bg=self.CONSOLE_BG, fg=self.SERIAL_FG, 
+                                   insertbackground=self.SERIAL_FG,
+                                   font=self.mono_font)
+        self.wifi_console.configure(bg=self.CONSOLE_BG, fg=self.WIFI_FG, 
+                                   insertbackground=self.WIFI_FG,
+                                   font=self.mono_font)
 
         # timers
         self.after(16, self._animate_plots)   # ~60 fps demo wave
         self.after(50, self._poll_queues)
         
-
+    def setup_fonts(self):
+        """Set up NERV-style monospace fonts"""
+        # Try to find a good monospace font
+        available_fonts = font.families()
+        mono_fonts = ['Consolas', 'Courier New', 'Monaco', 'DejaVu Sans Mono', 'Liberation Mono']
+        
+        selected_font = 'TkFixedFont'  # Default
+        for f in mono_fonts:
+            if f in available_fonts:
+                selected_font = f
+                break
+        
+        self.mono_font = font.Font(family=selected_font, size=10, weight='normal')
+        self.mono_font_bold = font.Font(family=selected_font, size=10, weight='bold')
+        self.label_font = font.Font(family=selected_font, size=9, weight='normal')
 
     # ── style ───────────────────────────────────────────────
     def _apply_style(self):
-        s = ttk.Style(self); s.theme_use("clam")
-        for elem in ("TFrame","TLabel","TLabelframe","TLabelframe.Label",
-                     "TButton","TCombobox","TEntry"):
-            s.configure(elem, background=self.BG, foreground=self.FG)
-        s.configure("TScrollbar", background=self.BG)
-        s.configure("TEntry",    fieldbackground=self.BG,
-                                foreground=self.FG,
-                                insertcolor=self.FG)
-        s.configure("TCombobox", fieldbackground=self.BG,
-                                foreground=self.FG)
-        s.map      ("TCombobox", fieldbackground=[("readonly", self.BG)])
-        s.map("TButton", background=[("!active", self.BG), ("active", "#3E3E3E")])
-        self.configure(background=self.BG)
+        """Apply NERV/Evangelion-inspired styling"""
+        s = ttk.Style(self)
+        s.theme_use("clam")
         
-        # ── coloured toggle styles ────────────────────────────────
-        s.configure("On.TButton",  background="#248f24", foreground="white")
-        s.map      ("On.TButton",
-                    background=[("active",  "#1f7a1f"), ("pressed", "#1b671b")])
-
-        s.configure("Off.TButton", background="#555555", foreground="white")
-        s.map      ("Off.TButton",
-                    background=[("active", "#4a4a4a"), ("pressed", "#3f3f3f")])
+        # Configure base elements with NERV colors
+        s.configure("TFrame", background=self.BG_PRIMARY, borderwidth=0)
+        s.configure("TLabel", background=self.BG_PRIMARY, foreground=self.FG_PRIMARY,
+                   font=self.label_font)
+        s.configure("TLabelframe", background=self.BG_PRIMARY, foreground=self.FG_PRIMARY,
+                   bordercolor=self.BORDER_COLOR, borderwidth=1, relief="solid",
+                   font=self.mono_font_bold)
+        s.configure("TLabelframe.Label", background=self.BG_PRIMARY, 
+                   foreground=self.FG_PRIMARY, font=self.mono_font_bold)
+        
+        # NERV-style buttons
+        s.configure("TButton", 
+                   background=self.BG_PRIMARY,
+                   foreground=self.FG_PRIMARY,
+                   bordercolor=self.BORDER_COLOR,
+                   lightcolor=self.BG_PRIMARY,
+                   darkcolor=self.BG_PRIMARY,
+                   borderwidth=2,
+                   focuscolor='none',
+                   font=self.mono_font)
+        
+        s.map("TButton",
+              background=[("active", self.BG_PRIMARY), ("pressed", self.BG_PRIMARY)],
+              foreground=[("active", self.FG_SECONDARY), ("pressed", self.FG_ACTIVE)],
+              bordercolor=[("active", self.BORDER_ACTIVE), ("pressed", self.FG_ACTIVE)])
+        
+        # Entry fields
+        s.configure("TEntry", 
+                   fieldbackground=self.BG_PRIMARY,
+                   background=self.BG_PRIMARY,
+                   foreground=self.FG_PRIMARY,
+                   bordercolor=self.BORDER_COLOR,
+                   insertcolor=self.FG_PRIMARY,
+                   font=self.mono_font)
+        
+        # Combobox
+        s.configure("TCombobox",
+                   fieldbackground=self.BG_PRIMARY,
+                   background=self.BG_PRIMARY,
+                   foreground=self.FG_PRIMARY,
+                   bordercolor=self.BORDER_COLOR,
+                   arrowcolor=self.FG_PRIMARY,
+                   font=self.mono_font)
+        
+        s.map("TCombobox", 
+              fieldbackground=[("readonly", self.BG_PRIMARY)],
+              bordercolor=[("focus", self.BORDER_ACTIVE)])
+        
+        # Scrollbar
+        s.configure("TScrollbar", 
+                   background=self.BG_PRIMARY,
+                   bordercolor=self.BORDER_COLOR,
+                   arrowcolor=self.FG_PRIMARY,
+                   troughcolor=self.BG_SECONDARY)
+        
+        # Special button styles
+        s.configure("Active.TButton",
+                   background=self.BG_PRIMARY,
+                   foreground=self.FG_SUCCESS,
+                   bordercolor=self.FG_SUCCESS)
+        
+        s.map("Active.TButton",
+              foreground=[("active", self.FG_SUCCESS), ("pressed", self.FG_SUCCESS)],
+              bordercolor=[("active", self.FG_SUCCESS), ("pressed", self.FG_SUCCESS)])
+        
+        s.configure("Alert.TButton",
+                   background=self.BG_PRIMARY,
+                   foreground=self.FG_ACTIVE,
+                   bordercolor=self.FG_ACTIVE)
+        
+        s.map("Alert.TButton",
+              foreground=[("active", self.FG_ACTIVE), ("pressed", "#FF3333")],
+              bordercolor=[("active", self.FG_ACTIVE), ("pressed", "#FF3333")])
 
     # ── plot column + signal-controls ───────────────────────────────────────
     def _build_plot_column(self):
@@ -136,74 +222,73 @@ class App(tk.Tk):
         Five stacked plots (Δt · time · wavelet · spectrogram · PSD) + controls.
         Now uses PlotManager to handle all matplotlib complexity.
         """
-        col = tk.Frame(self, bg=self.BG)
+        col = tk.Frame(self, bg=self.BG_PRIMARY)
         col.grid(row=0, column=0, sticky="nsew")
         col.rowconfigure(0, weight=1)
         col.rowconfigure(1, weight=0)
         col.columnconfigure(0, weight=1)
 
-        # Create PlotManager to handle all plotting
-        self.plots = PlotManager(col, self.BG, debug=DEBUG)
-        self.plots.get_widget().grid(row=0, column=0, sticky="nsew")
+        # Create PlotManager to handle all plotting (with NERV style)
+        self.plots = PlotManager(col, self.BG_PRIMARY, debug=DEBUG, style="evangelion")
+        self.plots.get_widget().grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
         self.plots.bind_resize_callback(self._queue_redraw)
     
         # ────────── control panel ─────────────────────────────────────
-        ctrl = ttk.LabelFrame(col, text="Signal & display controls")
+        ctrl = ttk.LabelFrame(col, text="SYNCHRONIZATION PARAMETERS")
         ctrl.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 6))
         for c in range(7):
             ctrl.columnconfigure(c, weight=1)
     
         r = 0
         # Fs & Record
-        ttk.Label(ctrl, text="Fs (Hz)").grid(row=r, column=0, sticky="e")
+        self._create_label(ctrl, "SAMPLE RATE", r, 0)
         self.fs_var  = tk.StringVar(value="250")
-        fs_entry = ttk.Entry(ctrl, textvariable=self.fs_var, width=8)
-        fs_entry.grid(row=r, column=1, sticky="we", padx=2)
+        fs_entry = self._create_entry(ctrl, self.fs_var, r, 1, width=8)
         fs_entry.insert(0, self.fs_var.get())
+        self._create_label(ctrl, "HZ", r, 2, sticky="w")
     
-        ttk.Label(ctrl, text="Record (s)").grid(row=r, column=2, sticky="e")
+        self._create_label(ctrl, "BUFFER", r, 3)
         self.dur_var = tk.StringVar(value="4")
-        self.dur_entry = ttk.Entry(ctrl, textvariable=self.dur_var, width=6)
-        self.dur_entry.grid(row=r, column=3, sticky="we", padx=2)
-        self.dur_entry.insert(0, "4")  # Set initial display value
-        ttk.Button(ctrl, text="Apply", command=self._apply_buf_settings).grid(row=r, column=4, padx=4)
+        self.dur_entry = self._create_entry(ctrl, self.dur_var, r, 4, width=6)
+        self.dur_entry.insert(0, "4")
+        self._create_label(ctrl, "SEC", r, 5, sticky="w")
+        
+        ttk.Button(ctrl, text="APPLY", command=self._apply_buf_settings).grid(row=r, column=6, padx=4)
         r += 1
     
-        # amplitude slider (symmetric ± log scale)
-        ttk.Label(ctrl, text="Amplitude ±V").grid(row=r, column=0, sticky="e")
+        # amplitude slider
+        self._create_label(ctrl, "AMPLITUDE", r, 0)
         self.amp_var = tk.DoubleVar(value=0.5)
         
-        # Create log scale slider (-6 to 0.7 represents 10^-6 to 10^0.7 ≈ 5V)
+        # Create log scale slider
         self.amp_log_var = tk.DoubleVar(value=np.log10(0.5))
-        self.amp_scale = tk.Scale(ctrl, from_=0.7, to=-6, resolution=0.01,
-                 orient="horizontal", variable=self.amp_log_var,
-                 command=self._update_amp_from_log,
-                 showvalue=False)  # Don't show log value
+        self.amp_scale = self._create_nerv_scale(
+            ctrl, from_=0.7, to=-6, resolution=0.01,
+            orient="horizontal", variable=self.amp_log_var,
+            command=self._update_amp_from_log
+        )
         self.amp_scale.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
-        self.amp_scale.set(np.log10(0.5))  # Explicitly set slider position
+        self.amp_scale.set(np.log10(0.5))
         
-        # Add a label to show the voltage value
-        self.amp_value_label = ttk.Label(ctrl, text="0.500 V")
-        self.amp_value_label.grid(row=r, column=4, sticky="w", padx=2)
+        # Voltage display
+        self.amp_value_label = self._create_label(ctrl, "0.500 V", r, 4, sticky="w")
         
-        self.amp_entry = ttk.Entry(ctrl, textvariable=self.amp_var, width=8)
-        self.amp_entry.grid(row=r, column=5, sticky="we", padx=2)
+        self.amp_entry = self._create_entry(ctrl, self.amp_var, r, 5, width=8)
         self.amp_entry.bind('<Return>', self._update_amp_from_entry)
         self.amp_entry.bind('<FocusOut>', self._update_amp_from_entry)
         r += 1
     
         # NFFT
-        ttk.Label(ctrl, text="NFFT").grid(row=r, column=0, sticky="e")
+        self._create_label(ctrl, "FFT POINTS", r, 0)
         self.nfft_var = tk.IntVar(value=512)
         initial_max = int(self.fs_var.get()) * int(self.dur_var.get())
-        self.nfft_sld = tk.Scale(
+        self.nfft_sld = self._create_nerv_scale(
             ctrl, from_=32, to=initial_max, variable=self.nfft_var,
-            orient="horizontal", showvalue=False,
+            orient="horizontal",
             command=lambda v: (self.nfft_var.set(int(float(v))),
                                self._sig_update(fft_pts=int(float(v)))))
         self.nfft_sld.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
-        self.nfft_label = ttk.Label(ctrl, text="512")
-        self.nfft_label.grid(row=r, column=4, sticky="w", padx=2)
+        self.nfft_label = self._create_label(ctrl, "512", r, 4, sticky="w")
         
         # Update label when slider moves
         def update_nfft_label(v):
@@ -212,65 +297,64 @@ class App(tk.Tk):
             self.nfft_label.config(text=str(val))
             self._sig_update(fft_pts=val)
         self.nfft_sld.config(command=update_nfft_label)
-        self.nfft_sld.set(512)  # Explicitly set initial position
+        self.nfft_sld.set(512)
         r += 1
     
         # Chebyshev attenuation
-        ttk.Label(ctrl, text="Cheb atten (dB)").grid(row=r, column=0, sticky="e")
+        self._create_label(ctrl, "CHEB ATTEN", r, 0)
         self.cheb_var = tk.DoubleVar(value=80.0)
-        self.cheb_scale = tk.Scale(ctrl, from_=40, to=120, orient="horizontal",
-                  variable=self.cheb_var,
-                  command=lambda v: (self.cheb_var.set(float(v)),
-                                     self._sig_update(cheb_atten_db=float(v))),
-                  showvalue=False)
+        self.cheb_scale = self._create_nerv_scale(
+            ctrl, from_=40, to=120, orient="horizontal",
+            variable=self.cheb_var,
+            command=lambda v: (self.cheb_var.set(float(v)),
+                               self._sig_update(cheb_atten_db=float(v)))
+        )
         self.cheb_scale.grid(row=r, column=1, columnspan=3, sticky="we", padx=2)
-        self.cheb_scale.set(80.0)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.cheb_var, width=6)\
-            .grid(row=r, column=4, sticky="we", padx=2)
+        self.cheb_scale.set(80.0)
+        self.cheb_entry = self._create_entry(ctrl, self.cheb_var, r, 4, width=6)
+        self._create_label(ctrl, "DB", r, 5, sticky="w")
         r += 1
     
         # PSD limits
-        ttk.Label(ctrl, text="PSD min (dB)").grid(row=r, column=0, sticky="e")
+        self._create_label(ctrl, "PSD MIN", r, 0)
         self.psd_lo = tk.DoubleVar(value=-150)
-        self.psd_lo_scale = tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
-                 variable=self.psd_lo, showvalue=False,
-                 command=lambda v: (self.psd_lo.set(float(v)),
-                                    self._enforce_psd(lo=True)))
+        self.psd_lo_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=40, orient="horizontal",
+            variable=self.psd_lo,
+            command=lambda v: (self.psd_lo.set(float(v)),
+                               self._enforce_psd(lo=True))
+        )
         self.psd_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
-        self.psd_lo_scale.set(-150)  # Explicitly set slider position
-        psd_lo_entry = ttk.Entry(ctrl, textvariable=self.psd_lo, width=6)
-        psd_lo_entry.grid(row=r, column=2, sticky="we", padx=2)
+        self.psd_lo_scale.set(-150)
+        psd_lo_entry = self._create_entry(ctrl, self.psd_lo, r, 2, width=6)
         psd_lo_entry.bind('<Return>', lambda e: (self.psd_lo_scale.set(self.psd_lo.get()), self._enforce_psd(lo=True)))
         psd_lo_entry.bind('<FocusOut>', lambda e: (self.psd_lo_scale.set(self.psd_lo.get()), self._enforce_psd(lo=True)))
     
-        ttk.Label(ctrl, text="PSD max (dB)").grid(row=r, column=3, sticky="e")
+        self._create_label(ctrl, "PSD MAX", r, 3)
         self.psd_hi = tk.DoubleVar(value=-20)
-        self.psd_hi_scale = tk.Scale(ctrl, from_=-200, to=40, orient="horizontal",
-                 variable=self.psd_hi, showvalue=False,
-                 command=lambda v: (self.psd_hi.set(float(v)),
-                                    self._enforce_psd(lo=False)))
+        self.psd_hi_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=40, orient="horizontal",
+            variable=self.psd_hi,
+            command=lambda v: (self.psd_hi.set(float(v)),
+                               self._enforce_psd(lo=False))
+        )
         self.psd_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
-        self.psd_hi_scale.set(-20)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.psd_hi, width=6)\
-            .grid(row=r, column=5, sticky="we", padx=2)
+        self.psd_hi_scale.set(-20)
+        self._create_entry(ctrl, self.psd_hi, r, 5, width=6)
     
         self.maxhold_on = tk.BooleanVar(value=False)
-        self.maxhold_cb = tk.Checkbutton(
-            ctrl, text="Max-hold", 
+        self.maxhold_cb = self._create_nerv_checkbutton(
+            ctrl, text="MAX-HOLD", 
             variable=self.maxhold_on,
-            command=self._on_maxhold_toggle,
-            bg=self.BG,
-            fg=self.FG,
-            selectcolor=self.BG,
-            activebackground="#3E3E3E"
+            command=self._on_maxhold_toggle
         )
         self.maxhold_cb.grid(row=r, column=6, sticky="w")
-        ttk.Button(ctrl, text="Reset", command=self._reset_maxhold)\
-            .grid(row=r, column=6, sticky="e", padx=4)
+        ttk.Button(ctrl, text="RESET", command=self._reset_maxhold,
+                  style="Alert.TButton").grid(row=r, column=6, sticky="e", padx=4)
         r += 1
         
         # Channel visibility checkboxes
-        ttk.Label(ctrl, text="Channels").grid(row=r, column=0, sticky="e")
+        self._create_label(ctrl, "CHANNELS", r, 0)
         ch_frame = ttk.Frame(ctrl)
         ch_frame.grid(row=r, column=1, columnspan=6, sticky="w", padx=2)
         
@@ -288,15 +372,11 @@ class App(tk.Tk):
             def make_callback(index):
                 return lambda: self._toggle_channel(index)
         
-            cb = tk.Checkbutton(
+            cb = self._create_nerv_checkbutton(
                 ch_frame,
-                text=f"{i}",
+                text=f"{i:02d}",
                 command=make_callback(i),
-                width=3,
-                bg=self.BG,
-                fg=self.FG,
-                selectcolor=self.BG,
-                activebackground="#3E3E3E"
+                width=3
             )
             cb.grid(row=i // 8, column=i % 8, padx=1, pady=1)
             self.channel_cbs.append(cb)
@@ -304,99 +384,155 @@ class App(tk.Tk):
             if DEBUG:
                 print(f"[MAIN_GUI] Created checkbox for channel {i}, var={var.get()}")
             
-        # Add All/None buttons for convenience
+        # Add All/None buttons
         btn_frame = ttk.Frame(ch_frame)
         btn_frame.grid(row=0, column=8, rowspan=2, padx=(10, 0))
-        ttk.Button(btn_frame, text="All", width=5,
-                   command=self._select_all_channels).grid(row=0, column=0, pady=1)
-        ttk.Button(btn_frame, text="None", width=5,
-                   command=self._select_no_channels).grid(row=1, column=0, pady=1)
+        ttk.Button(btn_frame, text="ALL", width=5,
+                   command=self._select_all_channels,
+                   style="Active.TButton").grid(row=0, column=0, pady=1)
+        ttk.Button(btn_frame, text="NONE", width=5,
+                   command=self._select_no_channels,
+                   style="Alert.TButton").grid(row=1, column=0, pady=1)
         r += 1
 
-        # NEW: Wavelet/Spectrogram channel selector
-        ttk.Label(ctrl, text="Wav/Spec Ch").grid(row=r, column=0, sticky="e")
+        # Wavelet/Spectrogram channel selector
+        self._create_label(ctrl, "WAV/SPEC CH", r, 0)
         self.wavspec_ch_var = tk.IntVar(value=0)
         self.wavspec_ch_cb = ttk.Combobox(
             ctrl, 
             textvariable=self.wavspec_ch_var,
-            values=list(range(16)),
+            values=[f"{i:02d}" for i in range(16)],
             state="readonly",
             width=4
         )
         self.wavspec_ch_cb.grid(row=r, column=1, sticky="w", padx=2)
         self.wavspec_ch_cb.current(0)
         self.wavspec_ch_cb.bind('<<ComboboxSelected>>', 
-                                lambda e: self.plots.set_wavspec_channel(self.wavspec_ch_var.get()))
+                                lambda e: self.plots.set_wavspec_channel(int(self.wavspec_ch_cb.get())))
 
-        # NEW: Spectrogram window size
-        ttk.Label(ctrl, text="Spec Win").grid(row=r, column=2, sticky="e")
+        # Spectrogram window size
+        self._create_label(ctrl, "SPEC WIN", r, 2)
         self.spec_win_var = tk.IntVar(value=256)
         initial_max_win = int(self.fs_var.get()) * int(self.dur_var.get()) // 2
-        self.spec_win_sld = tk.Scale(
+        self.spec_win_sld = self._create_nerv_scale(
             ctrl, from_=32, to=initial_max_win, variable=self.spec_win_var,
-            orient="horizontal", showvalue=False,
+            orient="horizontal",
             command=lambda v: (self.spec_win_var.set(int(float(v))),
-                               self.spec_win_label.config(text=str(int(float(v))))))
+                               self.spec_win_label.config(text=str(int(float(v)))))
+        )
         self.spec_win_sld.grid(row=r, column=3, columnspan=2, sticky="we", padx=2)
-        self.spec_win_sld.set(256)  # Explicitly set initial position
-        self.spec_win_label = ttk.Label(ctrl, text="256")
-        self.spec_win_label.grid(row=r, column=5, sticky="w", padx=2)
+        self.spec_win_sld.set(256)
+        self.spec_win_label = self._create_label(ctrl, "256", r, 5, sticky="w")
         r += 1
 
-        # NEW: Wavelet power limits
-        ttk.Label(ctrl, text="Wav min (dB)").grid(row=r, column=0, sticky="e")
+        # Wavelet power limits
+        self._create_label(ctrl, "WAV MIN", r, 0)
         self.wav_lo = tk.DoubleVar(value=-120)
-        self.wav_lo_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
-                 variable=self.wav_lo, showvalue=False,
-                 command=lambda v: (self.wav_lo.set(float(v)),
-                                    self._enforce_wav_limits(lo=True)))
+        self.wav_lo_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=20, orient="horizontal",
+            variable=self.wav_lo,
+            command=lambda v: (self.wav_lo.set(float(v)),
+                               self._enforce_wav_limits(lo=True))
+        )
         self.wav_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
-        self.wav_lo_scale.set(-120)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.wav_lo, width=6)\
-            .grid(row=r, column=2, sticky="we", padx=2)
+        self.wav_lo_scale.set(-120)
+        self._create_entry(ctrl, self.wav_lo, r, 2, width=6)
 
-        ttk.Label(ctrl, text="Wav max (dB)").grid(row=r, column=3, sticky="e")
+        self._create_label(ctrl, "WAV MAX", r, 3)
         self.wav_hi = tk.DoubleVar(value=-30)
-        self.wav_hi_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
-                 variable=self.wav_hi, showvalue=False,
-                 command=lambda v: (self.wav_hi.set(float(v)),
-                                    self._enforce_wav_limits(lo=False)))
+        self.wav_hi_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=20, orient="horizontal",
+            variable=self.wav_hi,
+            command=lambda v: (self.wav_hi.set(float(v)),
+                               self._enforce_wav_limits(lo=False))
+        )
         self.wav_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
-        self.wav_hi_scale.set(-30)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.wav_hi, width=6)\
-            .grid(row=r, column=5, sticky="we", padx=2)
+        self.wav_hi_scale.set(-30)
+        self._create_entry(ctrl, self.wav_hi, r, 5, width=6)
         r += 1
 
-        # NEW: Spectrogram power limits
-        ttk.Label(ctrl, text="Spec min (dB)").grid(row=r, column=0, sticky="e")
+        # Spectrogram power limits
+        self._create_label(ctrl, "SPEC MIN", r, 0)
         self.spec_lo = tk.DoubleVar(value=-120)
-        self.spec_lo_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
-                 variable=self.spec_lo, showvalue=False,
-                 command=lambda v: (self.spec_lo.set(float(v)),
-                                    self._enforce_spec_limits(lo=True)))
+        self.spec_lo_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=20, orient="horizontal",
+            variable=self.spec_lo,
+            command=lambda v: (self.spec_lo.set(float(v)),
+                               self._enforce_spec_limits(lo=True))
+        )
         self.spec_lo_scale.grid(row=r, column=1, sticky="we", padx=2)
-        self.spec_lo_scale.set(-120)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.spec_lo, width=6)\
-            .grid(row=r, column=2, sticky="we", padx=2)
+        self.spec_lo_scale.set(-120)
+        self._create_entry(ctrl, self.spec_lo, r, 2, width=6)
 
-        ttk.Label(ctrl, text="Spec max (dB)").grid(row=r, column=3, sticky="e")
+        self._create_label(ctrl, "SPEC MAX", r, 3)
         self.spec_hi = tk.DoubleVar(value=-30)
-        self.spec_hi_scale = tk.Scale(ctrl, from_=-160, to=20, orient="horizontal",
-                 variable=self.spec_hi, showvalue=False,
-                 command=lambda v: (self.spec_hi.set(float(v)),
-                                    self._enforce_spec_limits(lo=False)))
+        self.spec_hi_scale = self._create_nerv_scale(
+            ctrl, from_=-200, to=20, orient="horizontal",
+            variable=self.spec_hi,
+            command=lambda v: (self.spec_hi.set(float(v)),
+                               self._enforce_spec_limits(lo=False))
+        )
         self.spec_hi_scale.grid(row=r, column=4, sticky="we", padx=2)
-        self.spec_hi_scale.set(-30)  # Explicitly set slider position
-        ttk.Entry(ctrl, textvariable=self.spec_hi, width=6)\
-            .grid(row=r, column=5, sticky="we", padx=2)
+        self.spec_hi_scale.set(-30)
+        self._create_entry(ctrl, self.spec_hi, r, 5, width=6)
 
         # Apply initial plot limits to PlotManager
         self.plots.set_psd_limits(self.psd_lo.get(), self.psd_hi.get())
         self.plots.set_wavelet_limits(self.wav_lo.get(), self.wav_hi.get())
         self.plots.set_specgram_limits(self.spec_lo.get(), self.spec_hi.get())
         self.plots.set_amplitude_limits(self.amp_var.get())
-        # Update initial amplitude label
         self.amp_value_label.config(text="0.500 V")
+        self.plots.resize_buffer(int(self.fs_var.get()), int(self.dur_var.get()))
+
+    # Helper methods for NERV-style widgets
+    def _create_label(self, parent, text, row, col, **kwargs):
+        """Create a NERV-style label"""
+        label = ttk.Label(parent, text=text.upper())
+        label.grid(row=row, column=col, **kwargs)
+        return label
+        
+    def _create_entry(self, parent, textvariable, row, col, **kwargs):
+        """Create a NERV-style entry"""
+        entry = ttk.Entry(parent, textvariable=textvariable, **kwargs)
+        entry.grid(row=row, column=col, sticky="we", padx=2)
+        return entry
+        
+    def _create_nerv_scale(self, parent, **kwargs):
+        """Create a NERV-style scale (slider)"""
+        scale = tk.Scale(
+            parent,
+            bg=self.FG_SECONDARY,             # ← Changed to orange by default
+            fg=self.FG_PRIMARY,
+            activebackground=self.FG_ACTIVE,  # ← Changed to red on hover for distinction
+            highlightbackground=self.BG_PRIMARY,
+            highlightcolor=self.BORDER_COLOR,
+            highlightthickness=0,
+            troughcolor=self.BG_SECONDARY,
+            borderwidth=0,
+            sliderlength=20,
+            sliderrelief="flat",
+            showvalue=False,
+            font=self.mono_font,
+            **kwargs
+        )
+        return scale
+        
+    def _create_nerv_checkbutton(self, parent, **kwargs):
+        """Create a NERV-style checkbutton"""
+        cb = tk.Checkbutton(
+            parent,
+            bg=self.BG_PRIMARY,
+            fg=self.FG_PRIMARY,
+            activebackground=self.BG_PRIMARY,
+            activeforeground=self.FG_SECONDARY,
+            selectcolor=self.BG_PRIMARY,
+            highlightbackground=self.BG_PRIMARY,
+            highlightcolor=self.BORDER_COLOR,
+            highlightthickness=0,
+            font=self.mono_font,
+            **kwargs
+        )
+        return cb
 
     def _on_maxhold_toggle(self):
         """Handle max-hold toggle using PlotManager."""
@@ -555,7 +691,7 @@ class App(tk.Tk):
         
         # Update the status in console
         self.ser_console.configure(state="normal")
-        self.ser_console.insert("end", f"[PC] Buffer updated: {new_fs} Hz, {new_dur} s ({total_samples} samples)\n")
+        self.ser_console.insert("end", f"[PC] BUFFER UPDATED: {new_fs} HZ, {new_dur} S ({total_samples} SAMPLES)\n")
         self.ser_console.configure(state="disabled")
         self.ser_console.see("end")
         
@@ -640,17 +776,17 @@ class App(tk.Tk):
         self._resize_job = None
     
     def _toggle_serial(self):
-        if self.ser_btn["text"] == "Connect":      # ---- connect
+        if self.ser_btn["text"] == "CONNECT":      # ---- connect
             self.ser.start(self.port_var.get(), int(self.baud_var.get()))
-            self.ser_btn.config(text="Disconnect")
+            self.ser_btn.config(text="DISCONNECT", style="Active.TButton")
             self.port_cb.config(state="disabled")
         else:                                      # ---- disconnect
             self.ser.stop()
-            self.ser_btn.config(text="Connect")
+            self.ser_btn.config(text="CONNECT", style="TButton")
             self.port_cb.config(state="readonly")
         
     def _send_net_config(self):
-        if self.ser_btn["text"] != "Disconnect":
+        if self.ser_btn["text"] != "DISCONNECT":
             return
     
         # ⬇ NEW: read directly from the Entry widgets
@@ -658,7 +794,7 @@ class App(tk.Tk):
         pw   = self.pass_entry.get().strip()
     
         if not ssid or not pw:
-            self.ser.rx_q.put("[PC] ✖ SSID / Password required\n")
+            self.ser.rx_q.put("[PC] ✖ SSID / PASSWORD REQUIRED\n")
             return
     
         snd = self.ser.send_and_wait
@@ -697,8 +833,9 @@ class App(tk.Tk):
         ctl.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=4)
         build_controls(ctl)
 
-        txt = tk.Text(frame, wrap="word", bg=self.BG, fg=self.FG,
-                      insertbackground=self.FG, state="disabled")
+        txt = tk.Text(frame, wrap="word", bg=self.CONSOLE_BG, 
+                      insertbackground=self.FG_PRIMARY, state="disabled",
+                      borderwidth=1, relief="solid", highlightthickness=0)
         txt.grid(row=1, column=0, sticky="nsew", padx=(2,0), pady=(0,2))
         sb  = ttk.Scrollbar(frame, orient="vertical", command=txt.yview)
         sb.grid(row=1, column=1, sticky="ns", padx=(0,2), pady=(0,2))
@@ -711,65 +848,60 @@ class App(tk.Tk):
         parent.columnconfigure(1, weight=1)
 
         # ── row-0 : COM port ───────────────────────────────────
-        ttk.Label(parent, text="Port").grid(row=0, column=0, sticky="e")
+        self._create_label(parent, "PORT", 0, 0, sticky="e")
         self.port_var = tk.StringVar()
         self.port_cb = ttk.Combobox(parent, textvariable=self.port_var,
                                     values=[], state="readonly")
         self.port_cb.grid(row=0, column=1, sticky="we", padx=2)
 
         # ── row-1 : Baud rate ──────────────────────────────────
-        ttk.Label(parent, text="Baud").grid(row=1, column=0, sticky="e")
+        self._create_label(parent, "BAUD", 1, 0, sticky="e")
         self.baud_var = tk.StringVar(value="115200")
-        ent = ttk.Entry(parent, textvariable=self.baud_var)
+        ent = self._create_entry(parent, self.baud_var, 1, 1)
         ent.insert(0, self.baud_var.get())
-        ent.grid(row=1, column=1, sticky="we", padx=2)
 
         # ── row-2 : Connect / Disconnect button ───────────────
-        self.ser_btn = ttk.Button(parent, text="Connect",
+        self.ser_btn = ttk.Button(parent, text="CONNECT",
                                   command=self._toggle_serial)
         self.ser_btn.grid(row=2, column=0, columnspan=2,
                           sticky="we", pady=(0, 4))
 
         # ── row-3 : SSID ───────────────────────────────────────
-        ttk.Label(parent, text="SSID").grid(row=3, column=0, sticky="e")
-        self.ssid_var = tk.StringVar(value="SlimeVR")                # put your default here
-        ent = ttk.Entry(parent, textvariable=self.ssid_var)
+        self._create_label(parent, "SSID", 3, 0, sticky="e")
+        self.ssid_var = tk.StringVar(value="SlimeVR")
+        ent = self._create_entry(parent, self.ssid_var, 3, 1)
         self.ssid_entry = ent
         ent.insert(0, self.ssid_var.get())
-        ent.grid(row=3, column=1, sticky="we", padx=2)
 
         # ── row-4 : Password ──────────────────────────────────
-        ttk.Label(parent, text="Password").grid(row=4, column=0, sticky="e")
-        self.pass_var = tk.StringVar(value="")                # put your default here
+        self._create_label(parent, "PASSWORD", 4, 0, sticky="e")
+        self.pass_var = tk.StringVar(value="")
         ent = ttk.Entry(parent, textvariable=self.pass_var, show="*")
+        ent.grid(row=4, column=1, sticky="we", padx=2)
         self.pass_entry = ent
         ent.insert(0, self.pass_var.get())
-        ent.grid(row=4, column=1, sticky="we", padx=2)
 
         # ── row-5 : PC IP ─────────────────────────────────────
-        ttk.Label(parent, text="PC IP").grid(row=5, column=0, sticky="e")
+        self._create_label(parent, "PC IP", 5, 0, sticky="e")
         self.pc_ip_var = tk.StringVar(
             value=socket.gethostbyname(socket.gethostname()))
-        ent = ttk.Entry(parent, textvariable=self.pc_ip_var)
+        ent = self._create_entry(parent, self.pc_ip_var, 5, 1)
         ent.insert(0, self.pc_ip_var.get())
-        ent.grid(row=5, column=1, sticky="we", padx=2)
 
         # ── row-6 : Data port ─────────────────────────────────
-        ttk.Label(parent, text="Data port").grid(row=6, column=0, sticky="e")
+        self._create_label(parent, "DATA PORT", 6, 0, sticky="e")
         self.data_port_var = tk.StringVar(value="5001")
-        ent = ttk.Entry(parent, textvariable=self.data_port_var, width=8)
+        ent = self._create_entry(parent, self.data_port_var, 6, 1, width=8)
         ent.insert(0, self.data_port_var.get())
-        ent.grid(row=6, column=1, sticky="we", padx=2)
 
         # ── row-7 : Control port ──────────────────────────────
-        ttk.Label(parent, text="Ctrl port").grid(row=7, column=0, sticky="e")
+        self._create_label(parent, "CTRL PORT", 7, 0, sticky="e")
         self.ctrl_port_var = tk.StringVar(value="5000")
-        ent = ttk.Entry(parent, textvariable=self.ctrl_port_var, width=8)
+        ent = self._create_entry(parent, self.ctrl_port_var, 7, 1, width=8)
         ent.insert(0, self.ctrl_port_var.get())
-        ent.grid(row=7, column=1, sticky="we", padx=2)
 
         # ── row-8 : Send-config button ────────────────────────
-        ttk.Button(parent, text="Send net config",
+        ttk.Button(parent, text="SEND NET CONFIG",
                    command=self._send_net_config
                    ).grid(row=8, column=0, columnspan=2,
                           sticky="we", pady=(4, 0))
@@ -792,7 +924,7 @@ class App(tk.Tk):
 
         # ── helper: labelled two-button selector ────────────────────────────────
         def two_way(frm, col, text, cmd_a, cmd_b,
-                    labels=("ON", "OFF"),             # NEW
+                    labels=("ON", "OFF"),
                     default="A"):
             """
             Place a header + two side-by-side buttons in *frm* starting at *col*.
@@ -803,24 +935,21 @@ class App(tk.Tk):
             state = {"sel": None}                         # current side
         
             # header
-            ttk.Label(frm, text=text).grid(row=0, column=col, columnspan=2,
-                                           sticky="we", pady=(0, 1))
+            self._create_label(frm, text, 0, col, columnspan=2, sticky="we", pady=(0, 1))
         
             # sub-frame so both buttons have equal width
             box = ttk.Frame(frm); box.grid(row=1, column=col, sticky="we")
             for c in (0, 1):
                 box.columnconfigure(c, weight=1)
         
-            btnA = ttk.Button(box, text=labels[0])
-            btnB = ttk.Button(box, text=labels[1])
+            btnA = ttk.Button(box, text=labels[0].upper())
+            btnB = ttk.Button(box, text=labels[1].upper())
             btnA.grid(row=0, column=0, sticky="we", padx=1)
             btnB.grid(row=0, column=1, sticky="we", padx=1)
         
             def _apply_styles():
-                btnA.configure(style="On.TButton"  if state["sel"] == "A"
-                                                else "Off.TButton")
-                btnB.configure(style="On.TButton"  if state["sel"] == "B"
-                                                else "Off.TButton")
+                btnA.configure(style="Active.TButton" if state["sel"] == "A" else "TButton")
+                btnB.configure(style="Active.TButton" if state["sel"] == "B" else "TButton")
         
             def _click(which):
                 if state["sel"] == which:                 # already active
@@ -841,86 +970,90 @@ class App(tk.Tk):
         r = 0                                                         # row index
 
         # UDP connect / disconnect
-        self.wifi_btn = ttk.Button(parent, text="UDP Connect",
+        self.wifi_btn = ttk.Button(parent, text="UDP CONNECT",
                                    command=self._toggle_udp)
         self.wifi_btn.grid(row=r, column=0, sticky="we", padx=2, pady=(0, 8))
         r += 1
 
         # ── maintenance trio (board / adc / erase) ───────────────────────
         f = row_frame(r, 3);  r += 1
-        ttk.Button(f, text="Board Reboot",
-                   command=lambda: self._send_udp_cmd("sys esp_reboot")
+        ttk.Button(f, text="BOARD REBOOT",
+                   command=lambda: self._send_udp_cmd("sys esp_reboot"),
+                   style="Alert.TButton"
                    ).grid(row=0, column=0, sticky="we", padx=2, pady=1)
-        ttk.Button(f, text="ADC reset",
+        ttk.Button(f, text="ADC RESET",
                    command=lambda: self._send_udp_cmd("sys adc_reset")
                    ).grid(row=0, column=1, sticky="we", padx=2, pady=1)
-        ttk.Button(f, text="Erase Wi-Fi",
-                   command=lambda: self._send_udp_cmd("sys erase_flash")
+        ttk.Button(f, text="ERASE WI-FI",
+                   command=lambda: self._send_udp_cmd("sys erase_flash"),
+                   style="Alert.TButton"
                    ).grid(row=0, column=2, sticky="we", padx=2, pady=1)
 
         # ── filter master & mains frequency ──────────────────────────────
         f = row_frame(r, 2);  r += 1
-        two_way(f, 0, "All filters",      "sys filters_on",  "sys filters_off", default="B")
-        two_way(f, 1, "Network 50 / 60 Hz",
+        two_way(f, 0, "ALL FILTERS",      "sys filters_on",  "sys filters_off", default="B")
+        two_way(f, 1, "NETWORK FREQ",
                 "sys networkfreq 50", "sys networkfreq 60",
-                labels=("50 Hz", "60 Hz"),              # ← NEW labels
-                default="A")                            # default = 50 Hz
+                labels=("50 HZ", "60 HZ"),
+                default="A")
 
         # ── equaliser & DC-block ─────────────────────────────────────────
         f = row_frame(r, 2);  r += 1
-        two_way(f, 0, "Equaliser", "sys filter_equalizer_on",
+        two_way(f, 0, "EQUALISER", "sys filter_equalizer_on",
                               "sys filter_equalizer_off",    default="B")
-        two_way(f, 1, "DC-block",  "sys filter_dc_on",
+        two_way(f, 1, "DC-BLOCK",  "sys filter_dc_on",
                               "sys filter_dc_off",           default="B")
 
         # ── notch filters ────────────────────────────────────────────────
         f = row_frame(r, 2);  r += 1
-        two_way(f, 0, "50 / 60 Hz notch",
+        two_way(f, 0, "50/60 HZ NOTCH",
                 "sys filter_5060_on",  "sys filter_5060_off",  default="B")
-        two_way(f, 1, "100 / 120 Hz notch",
+        two_way(f, 1, "100/120 HZ NOTCH",
                 "sys filter_100120_on","sys filter_100120_off",default="B")
 
         # ── DC-cut dropdown ──────────────────────────────────────────────
         f = row_frame(r, 3);  r += 1
-        ttk.Label(f, text="DC-cutoff (Hz)").grid(row=0, column=0, sticky="e", padx=2)
+        self._create_label(f, "DC-CUTOFF", 0, 0, sticky="e", padx=2)
         
         dc_values          = ["0.5", "1", "2", "4", "8"]
-        self.dccut_var     = tk.StringVar(value=dc_values[0])      # ← default
+        self.dccut_var     = tk.StringVar(value=dc_values[0])
         dccut_cb           = ttk.Combobox(
             f, textvariable=self.dccut_var, state="readonly", values=dc_values
         )
         dccut_cb.grid(row=0, column=1, sticky="we", padx=2)
-        dccut_cb.current(0)                                        # show ″0.5″
+        dccut_cb.current(0)
         ttk.Button(
-            f, text="Set",
+            f, text="SET",
             command=lambda cb=dccut_cb:
                 self._send_udp_cmd(f"sys dccutofffreq {cb.get()}")
         ).grid(row=0, column=2, sticky="we", padx=2, pady=1)
         
         # ── digital-gain dropdown ───────────────────────────────────────
         f = row_frame(r, 3);  r += 1
-        ttk.Label(f, text="Digital gain (×)").grid(row=0, column=0, sticky="e", padx=2)
+        self._create_label(f, "DIGITAL GAIN", 0, 0, sticky="e", padx=2)
         
         gain_values        = ["1", "2", "4", "8", "16", "32", "64", "128", "256"]
-        self.gain_var      = tk.StringVar(value=gain_values[0])    # ← default
+        self.gain_var      = tk.StringVar(value=gain_values[0])
         gain_cb            = ttk.Combobox(
             f, textvariable=self.gain_var, state="readonly", values=gain_values
         )
         gain_cb.grid(row=0, column=1, sticky="we", padx=2)
-        gain_cb.current(0)                                         # show ″1″
+        gain_cb.current(0)
         ttk.Button(
-            f, text="Set",
+            f, text="SET",
             command=lambda cb=gain_cb:
                 self._send_udp_cmd(f"sys digitalgain {cb.get()}")
         ).grid(row=0, column=2, sticky="we", padx=2, pady=1)
 
         # ── continuous-mode controls ─────────────────────────────────────
         f = row_frame(r, 2);  r += 1
-        ttk.Button(f, text="Start CNT",
-                   command=lambda: self._send_udp_cmd("sys start_cnt")
+        ttk.Button(f, text="START CNT",
+                   command=lambda: self._send_udp_cmd("sys start_cnt"),
+                   style="Active.TButton"
                    ).grid(row=0, column=0, sticky="we", padx=2, pady=(4, 1))
-        ttk.Button(f, text="Stop CNT",
-                   command=lambda: self._send_udp_cmd("sys stop_cnt")
+        ttk.Button(f, text="STOP CNT",
+                   command=lambda: self._send_udp_cmd("sys stop_cnt"),
+                   style="Alert.TButton"
                    ).grid(row=0, column=1, sticky="we", padx=2, pady=(4, 1))
 
     # ── start / stop UDP listener ─────────────────────────────────────────
@@ -928,15 +1061,15 @@ class App(tk.Tk):
         if self.udp and self.udp._thread and self.udp._thread.is_alive():        # stop
             self.udp.stop()
             self.udp = None
-            self.wifi_btn.config(text="UDP Connect")
-            self.wifi_console.insert("end", "[PC] UDP disconnected\n")
+            self.wifi_btn.config(text="UDP CONNECT", style="TButton")
+            self.wifi_console.insert("end", "[PC] UDP DISCONNECTED\n")
             return
 
         # start
         try:
             port = int(self.ctrl_port_var.get())
         except ValueError:
-            self.wifi_console.insert("end", "[PC] ✖ Invalid control-port\n")
+            self.wifi_console.insert("end", "[PC] ✖ INVALID CONTROL-PORT\n")
             return
 
         self.udp = UDPManager(port)
@@ -944,9 +1077,9 @@ class App(tk.Tk):
         self.udp.rx_q = self.wifi_q
         self.udp.tx_hook = lambda pkt: self.wifi_q.put(f"[PC_] {pkt}\n")
 
-        self.wifi_btn.config(text="Disconnect")
+        self.wifi_btn.config(text="DISCONNECT", style="Active.TButton")
         self.wifi_console.insert(
-            "end", f"[PC] UDP listening on *:{port} … waiting for beacon\n")
+            "end", f"[PC] UDP LISTENING ON *:{port} … WAITING FOR BEACON\n")
 
     # ── helper: transmit one command over UDP (no local echo) ─────────────
     def _send_udp_cmd(self, cmd: str):
@@ -957,7 +1090,7 @@ class App(tk.Tk):
         if self.udp and self.udp.board_ip:
             self.udp.send(cmd)
         else:
-            self.wifi_q.put("[PC] ✖ UDP not connected / board IP unknown\n")
+            self.wifi_q.put("[PC] ✖ UDP NOT CONNECTED / BOARD IP UNKNOWN\n")
 
     # ── animate plots ----------------------------------------------------
     def _animate_plots(self):
@@ -1043,6 +1176,20 @@ class App(tk.Tk):
         Sets stop flags, stops UDP thread if running, then destroys the GUI
         after 300 ms so background threads/processes can exit cleanly.
         """
+        # Cancel all pending after() callbacks first
+        try:
+            self.after_cancel(self._animate_plots)
+        except:
+            pass
+        try:
+            self.after_cancel(self._poll_queues)
+        except:
+            pass
+        try:
+            self.after_cancel(self._refresh_ports)
+        except:
+            pass
+        
         # tell timers & workers to stop
         self.stop_evt.set()
     
@@ -1067,8 +1214,8 @@ class App(tk.Tk):
             except Exception:
                 pass
     
-        # destroy window after a short grace period
-        self.after(300, self.destroy)
+        # destroy window immediately
+        self.destroy()
 
 
 # ─────────────────────────────────────────────────────────────

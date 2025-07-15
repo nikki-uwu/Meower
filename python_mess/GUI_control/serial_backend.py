@@ -86,10 +86,19 @@ class SerialManager:
         """
         if self._thread and self._thread.is_alive():
             self._stop_evt.set()
-            self._thread.join(timeout=1.0)
+            # Force close any open serial port
+            try:
+                if hasattr(self, '_current_port') and self._current_port:
+                    self._current_port.close()
+            except:
+                pass
+            self._thread.join(timeout=0.5)
             if self._thread.is_alive():
-                # Thread didn't exit cleanly - this shouldn't happen
-                self.rx_q.put("[PC] ⚠ Serial thread failed to stop cleanly\n")
+                # Force terminate the thread
+                try:
+                    self._thread._stop()
+                except:
+                    pass
 
     def send(self, text: str) -> None:
         """
@@ -218,6 +227,7 @@ class SerialManager:
                         rtscts=False,
                         dsrdtr=False
                     )
+                    self._current_port = ser  # Store reference for force close
                     self._is_connected = True
                     self.rx_q.put(f"[PC] ✓ Connected to {port} @ {baud} baud\n")
                     
