@@ -340,8 +340,6 @@ void setup()
     // Start AP mode if we hard switch reset or no wifi data present
     maybeEnterAPMode();
 
-
-
     // If settings are found - pull everything from memory and setup board
     Preferences prefs;
     bool netconf_ok = prefs.begin("netconf", true);  // try read-only
@@ -459,15 +457,6 @@ void setup()
     // And for anyone who wants to use 4000 Hz - i don't think they need 10+ hours anyway.
     setCpuFrequencyMhz(160);
 
-    // Right at the end we have to reset ADC so it's at default state.
-    ads1299_full_reset();
-
-    // Set normal BCI mode
-    if (BCI_MODE)
-    {
-        BCI_preset();
-    }
-
     // FreeRTOS resources
     // 5-slot queue that holds exactly 5 complete UDP datagrams.
     //
@@ -527,6 +516,11 @@ void setup()
     attachInterrupt(PIN_DRDY,  // GPIO number
                     drdy_isr,  // ISR function (in IRAM)
                     FALLING ); // trigger on falling edge
+
+    // Right at the end we have to reset ADC so it's at default state.
+    wait_until_ads1299_is_ready();
+    ads1299_full_reset();
+    if (BCI_MODE) { BCI_preset(); } // Set normal BCI mode
 
     // Start ADC so it tries to send data right away without any other need so config or what ever
     // Signal will be square wave with 1s period

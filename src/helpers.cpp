@@ -289,7 +289,7 @@ void ads1299_full_reset()
 
     // Reconfigure SPI frequency to working one
     spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 8 MHz)
+    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 16 MHz)
 }
 
 void BCI_preset()
@@ -339,9 +339,54 @@ void BCI_preset()
 
     // Reconfigure SPI frequency to working one
     spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 8 MHz)
+    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 16 MHz)
 }
 
+// The ADS1299 ID register (0x00) is always accessible immediately after power-up, even before any other configuration.
+void wait_until_ads1299_is_ready()
+{
+   // Make sure continuous mode is OFF before checking ID - do this once outside loop
+   continious_mode_start_stop(LOW);
+
+   // Safe SPI transaction (2 MHz for config)
+   spiTransaction_OFF();                 // stop SPI
+   spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
+
+   // Debug counter for tracking attempts
+   uint32_t attempt_count = 0;
+
+   // Loop until ADS1299 responds with correct device ID
+   // This ensures the ADC is fully powered up and ready for configuration
+   while (true)
+   {
+       attempt_count++;
+       
+       // Read Device ID register (address 0x00) from master ADC
+       // Command format: RREG address=0x00, read 1 register
+       uint8_t tx_mes[3] = {0x20, 0x00, 0x00};  // RREG command for register 0x00
+       uint8_t rx_mes[3] = {0x00, 0x00, 0x00};  // Response buffer
+       
+       // Try to read from master ADC
+       xfer('M', 3u, tx_mes, rx_mes);
+
+       Debug.log("[ADS1299] Attempt %lu: ID response = 0x%02X (expected 0x3E)", attempt_count, rx_mes[2]);
+
+       // Check if we got the correct ADS1299 device ID (0x3E)
+       if (rx_mes[2] == 0x3E)
+       {
+           Debug.log("[ADS1299] Ready after %lu attempts", attempt_count);
+           // ADS1299 is ready - exit the loop
+           break;
+       }
+
+       // Small delay before next attempt to avoid flooding the bus
+       delay(10); // 10 ms between attempts
+   }
+
+   // Reconfigure SPI frequency to working one
+   spiTransaction_OFF();                          // stop SPI
+   spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start at normal working frequency (16 MHz)
+}
 
 
 NetConfig::NetConfig()

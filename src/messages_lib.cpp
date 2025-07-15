@@ -85,10 +85,7 @@ static void cmd_ADC_RESET(char **)
     ads1299_full_reset();
 
     // If we use it for BCI it does normal preset right away
-    if (BCI_MODE)
-    {
-        BCI_preset();
-    }
+    if (BCI_MODE) { BCI_preset(); }
 }
 static void cmd_START_CONT(char **)
 {
