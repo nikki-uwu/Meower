@@ -551,7 +551,7 @@ class PlotManager:
                 spec_data = data[-expected_npts:, self.wavspec_channel]
             
             # Remove DC component by subtracting mean
-            spec_data_dc_removed = spec_data - np.mean(spec_data)
+            spec_data_dc_removed = spec_data
             
             # Calculate 95% overlap
             noverlap = int(0.95 * spec_nperseg)
