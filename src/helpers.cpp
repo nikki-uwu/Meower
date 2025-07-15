@@ -246,6 +246,9 @@ void ads1299_full_reset()
         const uint8_t Slave_conf_1[3u] = {0x41, 0x00, 0x96};
         xfer('S', 3u, Slave_conf_1, rx_mes);
 
+        // CRITICAL: Wait for clock sync between master and slave
+        delay(50);  // Give slave time to lock onto master's clock
+
         // Set reference signal to base again, since slave was in what ever state so
         // after this config 3 messages they will be in similar modes again
         const uint8_t Config_3[3u] = {0x43, 0x00, 0xE0};

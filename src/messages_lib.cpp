@@ -27,7 +27,8 @@ extern Debugger Debug;
 // External helpers
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-extern void ads1299_full_reset(void);
+extern void ads1299_full_reset();
+extern void BCI_preset();
 extern void continious_mode_start_stop(uint8_t on_off);
 
 
