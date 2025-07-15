@@ -148,6 +148,8 @@ def udp_reader_process(shared_dict, shared_bat, shared_tim,
                 shared_dict['latest'] = (data_buf * scale).copy()
                 shared_bat ['latest'] = batt
                 shared_tim ['latest'] = time_buf.copy()
+                
+            time.sleep(0.0001)
 
         except Exception as e:
             print(f"[UDP ERROR] outer loop: {e}")
@@ -265,41 +267,49 @@ def main():
     data, addr = ctrl_sock.recvfrom(256)
     ESP_IP = addr[0]
     print("ESP32's IP is", ESP_IP)
-    ctrl_sock.sendto(b"sys reset ", (ESP_IP, CTRL_PORT))
+    ctrl_sock.sendto(b"sys adc_reset ", (ESP_IP, CTRL_PORT))
 
     ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
-    flush_udp_buffer(ctrl_sock)
-    for reg in (0x20, 0x23):
-        cmd = f"spi M 3 0x{reg:02X} 0x00 0x00 "
-        ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
-        time.sleep(0.1)
-        data, _ = ctrl_sock.recvfrom(256)
-        print("RX <", ' '.join(f'{b:02x}' for b in data))
-    ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB6 ", (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    ctrl_sock.sendto(b"spi S 3 0x41 0x00 0x96 ", (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    flush_udp_buffer(ctrl_sock)
-    CONFIG_2 = 0xD4
-    cmd = f"spi B 3 0x42 0x00 0x{CONFIG_2:02X} "
-    ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    flush_udp_buffer(ctrl_sock)
+    # flush_udp_buffer(ctrl_sock)
+    # for reg in (0x20, 0x23):
+    #     cmd = f"spi M 3 0x{reg:02X} 0x00 0x00 "
+    #     ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
+    #     time.sleep(0.1)
+    #     data, _ = ctrl_sock.recvfrom(256)
+    #     print("RX <", ' '.join(f'{b:02x}' for b in data))
+    # ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB6 ", (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # ctrl_sock.sendto(b"spi S 3 0x41 0x00 0x96 ", (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # flush_udp_buffer(ctrl_sock)
+    # CONFIG_2 = 0xD4
+    # cmd = f"spi B 3 0x42 0x00 0x{CONFIG_2:02X} "
+    # ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # flush_udp_buffer(ctrl_sock)
     CHANNEL_CONF = 0x08
     for reg in range(0x45, 0x4D):
         cmd = f"spi B 3 0x{reg:02X} 0x00 0x{CHANNEL_CONF:02X} "
         ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
         time.sleep(0.1)
-    MASTER_CONF_3 = 0xEC
-    SLAVE_CONF_3  = 0xE8
-    ctrl_sock.sendto(f"spi M 3 0x43 0x00 0x{MASTER_CONF_3:02X} ".encode(), (ESP_IP, CTRL_PORT))
-    ctrl_sock.sendto(f"spi S 3 0x43 0x00 0x{SLAVE_CONF_3:02X} ".encode(),  (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    flush_udp_buffer(ctrl_sock)
-    ctrl_sock.sendto(b"spi M 3 0x23 0x00 0x00 ", (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    data, _ = ctrl_sock.recvfrom(256)
-    print("RX <", ' '.join(f'{b:02x}' for b in data))
+    # # CHANNEL_CONF = 0x68
+    # # cmd = f"spi M 3 0x45 0x00 0x{CHANNEL_CONF:02X} "
+    # # ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
+    # # time.sleep(0.1)
+    # MASTER_CONF_3 = 0xEC
+    # SLAVE_CONF_3  = 0xE8
+    # ctrl_sock.sendto(f"spi M 3 0x43 0x00 0x{MASTER_CONF_3:02X} ".encode(), (ESP_IP, CTRL_PORT))
+    # ctrl_sock.sendto(f"spi S 3 0x43 0x00 0x{SLAVE_CONF_3:02X} ".encode(),  (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # ctrl_sock.sendto(b"spi B 3 0x4D 0x00 0x02 ", (ESP_IP, CTRL_PORT))
+    # ctrl_sock.sendto(b"spi B 3 0x4E 0x00 0x00 ", (ESP_IP, CTRL_PORT))
+    # #ctrl_sock.sendto(f"spi B 3 0x4E 0x00 0x00 ".encode(), (ESP_IP, CTRL_PORT))
+    # #time.sleep(0.1)
+    # flush_udp_buffer(ctrl_sock)
+    # ctrl_sock.sendto(b"spi M 3 0x23 0x00 0x00 ", (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # data, _ = ctrl_sock.recvfrom(256)
+    # print("RX <", ' '.join(f'{b:02x}' for b in data))
 
     ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
 
@@ -464,7 +474,7 @@ def main():
     netfreq_entry.grid(row=2, column=3)
     
     tk.Label(cf, text="DC Cutoff Freq:").grid(row=3, column=0, sticky='e')
-    dccutoff_var = tk.IntVar(root, 8)
+    dccutoff_var = tk.IntVar(root, 8.0)
     dccutoff_entry = tk.Entry(cf, textvariable=dccutoff_var, width=6)
     dccutoff_entry.grid(row=3, column=1)
     
@@ -497,12 +507,14 @@ def main():
     
     def on_dccutoff_change(event=None):
         val = dccutoff_var.get()
-        if str(val).isdigit() and int(val) >= 0:
-            cmd = f"sys DCcutoffFreq {val}"
-            print(f"Sending CMD: {repr(cmd)}")
-            send_cmd_and_print(cmd)
-    dccutoff_entry.bind('<Return>', on_dccutoff_change)
-    dccutoff_entry.bind('<FocusOut>', on_dccutoff_change)
+        try:
+            val_f = float(val)
+            if val_f in (0.5, 1, 2, 4, 8):
+                cmd = f"sys DCcutoffFreq {val_f}"
+                print(f"Sending CMD: {repr(cmd)}")
+                send_cmd_and_print(cmd)
+        except ValueError:
+            pass  # Invalid input; do nothing
 
     
     # --- FFT and all controls start at row=5 (after 3 parameter boxes) ---
@@ -825,15 +837,15 @@ def main():
             fig_ts.canvas.flush_events()
             check_command_replies(ctrl_sock)
             now = time.time()
-            if (now - prev_time) > 0.5:
-                print(f"[PY] Sending floof at {now:.2f}")
+            if (now - prev_time) > 0.005:
+                #print(f"[PY] Sending floof at {now:.2f}")
                 ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
                 #ctrl_sock.sendto(b'sys erase_flash', (ESP_IP, CTRL_PORT))
                 prev_time = now
             root.update_idletasks()
             root.update()
             # --- Reduce CPU use by adaptive sleep, but keep UI smooth ---
-            if Server_sleeping_time > 0.0005:
+            if Server_sleeping_time > 1:
                 time.sleep(Server_sleeping_time)
             else:
                 time.sleep(0.0005)
