@@ -34,7 +34,6 @@ from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
 
 # Connection settings
 USE_AUTO_DISCOVERY = True  # Set to False to use manual IP
-MANUAL_IP = "192.168.1.100"  # Change this to your board's IP if not using discovery
 
 # Recording settings  
 RECORD_DURATION = 10  # Seconds to record
@@ -60,16 +59,7 @@ def main():
     
     # Configure connection parameters
     params = BrainFlowInputParams()
-    params.ip_port = 5001      # Data port (where EEG data arrives)
-    params.ip_port_aux = 5000  # Control port (for sending commands)
-    
-    if not USE_AUTO_DISCOVERY:
-        params.ip_address = MANUAL_IP
-        print(f"   Using manual IP: {MANUAL_IP}")
-    else:
-        # params.ip_address = ""  # Empty = auto-discovery
-        print("   Using auto-discovery mode")
-    
+
     # Create board object and connect
     board = BoardShim(BoardIds.VRCHAT_BOARD.value, params)
     board.prepare_session()
@@ -173,16 +163,10 @@ def main():
     
     # Check if we need to scale the data (auto-detect raw ADC vs voltage)
     first_channel = data[eeg_channels[0], :] if len(eeg_channels) > 0 else np.array([0])
-    if abs(np.mean(first_channel)) > 0.01:  # Mean > 10mV suggests raw ADC
-        scale_factor = 1e-3  # Convert to millivolts
-        unit_label = 'mV'
-        offset_step = 200  # 200 mV between channels
-        scale_note = ' (ADC values scaled to mV)'
-    else:
-        scale_factor = 1e6  # Convert to microvolts
-        unit_label = 'uV'
-        offset_step = 0  # 200 uV between channels
-        scale_note = ''
+    scale_factor = 1e6  # Convert to microvolts
+    unit_label = 'uV'
+    offset_step = 0  # 200 uV between channels
+    scale_note = ''
     
     # Plot each of the 16 channels
     for i in range(16):
