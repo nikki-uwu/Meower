@@ -281,6 +281,12 @@ int VrchatBoard::prepare_session ()
     // Store the board IP for sending commands
     board_ip_ = board_ip;
 
+    // Set floof ping flag
+    keep_floof_ = true;
+
+    // Launch keep-alive thread - this sends periodic "floof" messages
+    ping_th_ = std::thread (&VrchatBoard::ping_thread, this);
+
     // Mark session as initialized
     initialized_ = true;
     safe_logger (spdlog::level::info, "Session prepared successfully");
@@ -350,14 +356,21 @@ int VrchatBoard::start_stream (int buffer_size, const char *streamer_params)
         return result;
     }
 
+    // Send command to start continuous data transmission
+    std::string response;
+    int cmd_result = config_board("sys start_cnt", response);
+    if (cmd_result != (int)BrainFlowExitCodes::STATUS_OK)
+    {
+        safe_logger (spdlog::level::err, "Failed to start continuous mode: {}", response);
+        // Optionally return error, or continue anyway
+        // return cmd_result;
+    }
+
     // Set thread control flag and launch worker threads
     keep_alive_ = true;
     
     // Launch data reception thread - this receives and processes EEG packets
     read_th_ = std::thread (&VrchatBoard::read_thread, this);
-    
-    // Launch keep-alive thread - this sends periodic "floof" messages
-    ping_th_ = std::thread (&VrchatBoard::ping_thread, this);
     
     // Mark streaming as active
     streaming_ = true;
@@ -375,6 +388,15 @@ int VrchatBoard::stop_stream ()
         safe_logger (spdlog::level::warn, "Stream not running");
         return (int)BrainFlowExitCodes::STREAM_THREAD_IS_NOT_RUNNING;
     }
+
+    // Send command to stop continuous data transmission
+    std::string response;
+    int cmd_result = config_board("sys stop_cnt", response);
+    if (cmd_result != (int)BrainFlowExitCodes::STATUS_OK)
+    {
+        safe_logger (spdlog::level::warn, "Failed to stop continuous mode: {}", response);
+        // Continue with thread cleanup anyway
+    }
     
     // Signal threads to stop
     keep_alive_ = false;
@@ -385,11 +407,6 @@ int VrchatBoard::stop_stream ()
     if (read_th_.joinable ())
     {
         read_th_.join ();
-    }
-    
-    if (ping_th_.joinable ())
-    {
-        ping_th_.join ();
     }
     
     // Clear streaming flag
@@ -407,6 +424,15 @@ int VrchatBoard::release_session ()
     if (streaming_)
     {
         stop_stream ();
+    }
+
+    // Set floof ping flag
+    keep_floof_ = false;
+
+    // joinable() check prevents exception if thread was never started (e.g., start_stream failed early)
+    if (ping_th_.joinable ())
+    {
+        ping_th_.join ();
     }
     
     // Close all sockets and free resources
@@ -812,7 +838,7 @@ void VrchatBoard::ping_thread ()
     unsigned long floof_count = 0;  // Track successful keep-alives for debugging connection stability
 
     // Send keep-alive every KEEPALIVE_INTERVAL_SEC seconds
-    while (keep_alive_)
+    while (keep_floof_)
     {
         if (ctrl_socket_ >= 0 && !board_ip_.empty())  // Only send if socket is open AND we know where to send
         {
