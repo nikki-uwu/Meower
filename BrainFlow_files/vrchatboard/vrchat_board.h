@@ -220,6 +220,10 @@ private:
                                              // This flag prevents multiple init/cleanup calls which would fail.
 #endif
     
+    // ---------- Timestamp Alignment ----------
+    bool first_packet_received_ { false };    // Flag to track first packet
+    double timestamp_offset_ { 0.0 };         // Offset to convert hw time to PC time
+    
     /**
      * Wait for board beacon and discover IP address. Uses raw sockets to extract sender's IP from UDP beacon.
      * 

@@ -55,6 +55,7 @@
 #endif
 
 #include "brainflow_constants.h"
+#include "timestamp.h"
 
 
 // ====================================================================
@@ -418,6 +419,10 @@ int VrchatBoard::release_session ()
     discovered_ip_.clear();
     board_ip_.clear();
     
+    // Reset timestamp alignment
+    first_packet_received_ = false;
+    timestamp_offset_ = 0.0;
+    
     safe_logger (spdlog::level::info, "Session released");
     
     return (int)BrainFlowExitCodes::STATUS_OK;
@@ -624,15 +629,11 @@ void VrchatBoard::read_thread ()
             {
                 battery_idx = board_descr["default"]["battery_channel"];
             }
-            
-            // Get hardware timestamp channel (stored in resistance_channels)
-            if (board_descr["default"].contains("resistance_channels"))
+
+            // Get timestamp channel if defined
+            if (board_descr["default"].contains("timestamp_channel"))
             {
-                auto resistance_channels = board_descr["default"]["resistance_channels"].get<std::vector<int>>();
-                if (!resistance_channels.empty())
-                {
-                    hw_timestamp_idx = resistance_channels[0];  // Use first resistance channel for hw timestamp
-                }
+                hw_timestamp_idx = board_descr["default"]["timestamp_channel"];
             }
         }
     }
@@ -677,6 +678,9 @@ void VrchatBoard::read_thread ()
             // - Error: Network temporarily unavailable, will retry on next loop iteration
             continue;
         }
+
+        // Get PC timestamp when packet is received (UNIX microseconds)
+        double pc_timestamp = get_timestamp();
 
         // ----------- Validate Packet Size -----------
         // Valid packet must be: n*FRAME_SIZE + BATTERY_SIZE bytes (n frames + battery)
@@ -745,18 +749,31 @@ void VrchatBoard::read_thread ()
             // Bytes 48-51 contain a 32-bit unsigned integer timestamp from the board's internal clock.
             // Format: little-endian, units of 8 microseconds since board power-on.
             // We store this to detect packet loss (gaps > expected interval) and measure timing jitter.
-            if (hw_timestamp_idx >= 0 && hw_timestamp_idx < num_rows)
+            if ((hw_timestamp_idx >= 0) && (hw_timestamp_idx < num_rows))
             {
                 uint32_t hw_timestamp;
                 memcpy(&hw_timestamp, &frame_data[48], sizeof(uint32_t));
                 // Convert to seconds: multiply by 8 microseconds per tick
-                package[hw_timestamp_idx] = hw_timestamp * 8e-6;
+                double hw_time_seconds = hw_timestamp * 8.0;
+                
+                // On first packet, calculate offset to align hardware time with PC time
+                if (!first_packet_received_)
+                {
+                    timestamp_offset_ = pc_timestamp - hw_time_seconds;
+                    first_packet_received_ = true;
+                    safe_logger (spdlog::level::debug, 
+                        "Timestamp alignment: PC={:.6f}, HW={:.6f}, Offset={:.6f}", 
+                        pc_timestamp, hw_time_seconds, timestamp_offset_);
+                }
+                
+                // Apply offset to convert hardware time to PC time
+                package[hw_timestamp_idx] = hw_time_seconds + timestamp_offset_;
             }
 
             // ----------- Add Battery Voltage -----------
             // Store battery voltage in configured channel. The bounds check prevents writing
             // past array end if board description specifies invalid channel number.
-            if (battery_idx >= 0 && battery_idx < num_rows)
+            if ((battery_idx >= 0) && (battery_idx < num_rows))
             {
                 package[battery_idx] = battery_voltage;
             }
