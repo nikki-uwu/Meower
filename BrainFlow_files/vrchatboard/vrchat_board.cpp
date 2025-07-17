@@ -705,9 +705,6 @@ void VrchatBoard::read_thread ()
             continue;
         }
 
-        // Get PC timestamp when packet is received (UNIX microseconds)
-        double pc_timestamp = get_timestamp();
-
         // ----------- Validate Packet Size -----------
         // Valid packet must be: n*FRAME_SIZE + BATTERY_SIZE bytes (n frames + battery)
         if (bytes_received < FRAME_SIZE + BATTERY_SIZE)
@@ -780,11 +777,14 @@ void VrchatBoard::read_thread ()
                 uint32_t hw_timestamp;
                 memcpy(&hw_timestamp, &frame_data[48], sizeof(uint32_t));
                 // Convert to seconds: multiply by 8 microseconds per tick
-                double hw_time_seconds = hw_timestamp * 8.0;
+                double hw_time_seconds = hw_timestamp * 0.000008;
                 
                 // On first packet, calculate offset to align hardware time with PC time
                 if (!first_packet_received_)
                 {
+                    // Get PC timestamp when first packet is received (UNIX microseconds)
+                    double pc_timestamp = get_timestamp();
+
                     timestamp_offset_ = pc_timestamp - hw_time_seconds;
                     first_packet_received_ = true;
                     safe_logger (spdlog::level::debug, 
