@@ -78,19 +78,19 @@ constexpr size_t ADC_PACKET_BYTES = ADC_FULL_FRAME_SIZE * FRAMES_PER_PACKET;
 constexpr size_t UDP_PACKET_BYTES = (ADC_FULL_FRAME_SIZE * FRAMES_PER_PACKET) + Battery_Sense::DATA_SIZE;
 
 // ADC equalizer master switch. The SYS commands FILTER_EQUALIZER_ON / FILTER_EQUALIZER_OFF toggle it at run time.
-volatile bool g_adcEqualizer = true;
+volatile bool g_adcEqualizer = false;
 
 // IIR (DC removal) master switch. The SYS commands FILTER_DC_ON / FILTER_DC_OFF toggle it at run time.
-volatile bool g_removeDC = true;
+volatile bool g_removeDC = false;
 
 // IIR 50/60 Hz notch filter master switch. The SYS commands FILTER_5060_ON / FILTER_5060_OFF toggle it at run time.
-volatile bool g_block5060Hz = true;
+volatile bool g_block5060Hz = false;
 
 // IIR 100/120 Hz notch filter master switch. The SYS commands FILTER_100120_ON / FILTER_100120_OFF toggle it at run time.
-volatile bool g_block100120Hz = true;
+volatile bool g_block100120Hz = false;
 
 // Global switch for all filters being ON or OFF
-volatile bool g_filtersEnabled = true;
+volatile bool g_filtersEnabled = false;
 
 
 
