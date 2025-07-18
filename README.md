@@ -245,18 +245,27 @@ Result: -8,388,608 (proper negative int32)
 ```python
 # Parse one 24-bit sample (Python)
 def parse_24bit_sample(b0, b1, b2):
-    # Step 1: Combine bytes (big-endian)
-    raw_24bit = (b0 << 16) | (b1 << 8) | b2
+    # Combine 3 bytes into 24-bit value
+    value = (b0 << 16) | (b1 << 8) | b2
     
-    # Step 2: Sign extend if negative
-    if raw_24bit & 0x800000:  # Check bit 23
-        raw_24bit |= 0xFF000000  # Set upper 8 bits to 1
+    # Sign extend from 24-bit to 32-bit
+    if value >= 0x800000:  # If negative (bit 23 set)
+        value -= 0x1000000  # Subtract 2^24
     
-    # Convert to signed 32-bit integer
-    if raw_24bit >= 0x80000000:
-        raw_24bit = raw_24bit - 0x100000000
+    return float(value)
+```
+```c
+// C code - sign extension happens automatically with proper types
+int32_t parse_24bit_sample(uint8_t b0, uint8_t b1, uint8_t b2)
+{
+    // Step 1: Combine bytes into 24-bit value in 32-bit container
+    int32_t value = (b0 << 16) | (b1 << 8) | b2;
     
-    return float(raw_24bit)
+    // Step 2: Sign extend from 24-bit to 32-bit using shift method
+    value = (value << 8) >> 8;  // Arithmetic shift does sign extension
+    
+    return value;
+}
 ```
 
 For complete UDP datagram parsing including frame validation and battery extraction, see the `python/` folder which contains full working examples.
