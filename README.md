@@ -421,10 +421,10 @@ spi [target] [length] [byte0] [byte1] ... [byteN]
 - **Slave reading not implemented**: Due to daisy-chain configuration, reading from slave would require:
   1. Chip select slave only
   2. Activate master 
-  3. Push 27 dummy bytes through master
+  3. Push 27 dummy bytes through master (3 byte preamble + 24 bytes channel data)
   4. Next 27 bytes would be slave data
   
-This follows the same principle as ADC sample reading in daisy-chain mode.
+This follows the same principle as ADC sample reading in daisy-chain mode where each ADC outputs 27 bytes.
 
 ### Common Examples
 
@@ -433,7 +433,7 @@ This follows the same principle as ADC sample reading in daisy-chain mode.
 spi M 3 0x20 0x00 0x00
 ```
 - 0x20 = Read register 0x00 (device ID)
-- Response: [XX, XX, 0x3E]
+- Response: [garbage, garbage, 0x3E] - third byte contains the ID
 
 **Read Configuration Register 1:**
 ```
