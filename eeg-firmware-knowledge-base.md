@@ -1,0 +1,385 @@
+# ESP32-C3 EEG Firmware Complete Knowledge Base
+
+This document consolidates ALL technical knowledge, implementation details, and important notes scattered throughout the firmware codebase. Created to prevent getting lost in the massive codebase.
+
+---
+
+## 🔴 Critical Safety & Performance Rules
+
+1. **ALWAYS use battery power during recording** - USB introduces catastrophic noise that destroys µV-level signals
+2. **Never exceed 2 MHz SPI during initial configuration** - ADS1299 refuses faster clocks after reset
+3. **Keep ADC sense pin on ADC1 only** - ADC2 conflicts with WiFi and will cause crashes
+4. **Triple-tap power for recovery** - If board acts dead, 3 power cycles < 3s each triggers captive portal
+5. **Send "floof" every ≤5 seconds** - Board drops to IDLE after 10s without keep-alive
+
+---
+
+## 1. Hardware Architecture & Pin Mapping
+
+### ESP32-C3 Pin Assignments
+```
+SCLK        : GPIO 10  (Hardware SPI)
+MOSI        : GPIO 6   (Hardware SPI)
+MISO        : GPIO 2   (Hardware SPI + pulldown to prevent tri-state decay)
+DRDY        : GPIO 3   (Interrupt pin, FALLING edge)
+START       : GPIO 0   (Controls ADC sampling)
+PWDN        : GPIO 8   (Power down control)
+RESET       : GPIO 7   (Hardware reset)
+CS_MASTER   : GPIO 1   (Master ADS1299)
+CS_SLAVE    : GPIO 5   (Slave ADS1299)
+CS_UNUSED   : GPIO 21  (Default SPI CS - kept HIGH)
+LED         : GPIO 20  (Status indicator, active LOW)
+BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
+```
+
+### Daisy-Chain Configuration
+- **Data flow**: Slave ADC output → Master ADC input → ESP32
+- **Clock**: Master provides clock to Slave via dedicated line
+- **Sync**: Both ADCs share START signal for perfect alignment
+- **Frame structure**: 27 bytes per ADC (3 preamble + 24 channel data)
+
+### Electrical Design Notes
+- **Battery voltage divider**: Calibrated scale factor = 0.00123482072238899979173968476499
+- **Pull-down on MISO**: Prevents signal decay when last bit = 1
+- **CS timing**: Uses direct register writes (40ns edges) vs digitalWrite (1.2µs)
+- **Power**: ~400mW typical, 470mW max @ 4kHz
+
+---
+
+## 2. Boot Sequence & Recovery Mechanisms
+
+### BootCheck System (Anti-Brick Protection)
+```
+Window: 5 seconds cumulative ON time
+Detection: 3 reboots with flag="a" (armed) within window
+Action: Set BootMode="AccessPoint" → force captive portal
+Reset: After 1 second, flag changes "a"→"b" (disarmed)
+```
+
+### Captive Portal Emergency Mode
+- **SSID**: `EEG-SETUP`
+- **Password**: `password`  
+- **IP**: `192.168.4.1`
+- **Saves to NVS**: ssid, pass, ip, port_ctrl, port_data
+- **Auto-triggers**: On missing config or boot storm
+
+### ADS1299 Initialization Sequence
+1. Set continuous mode OFF
+2. Force SPI to 2 MHz (CRITICAL for stability)
+3. All digital signals LOW (CS, START)
+4. PWDN/RESET cycle with 150ms delays
+5. Send RESET pulse (10µs LOW)
+6. SDATAC command (exit continuous mode)
+7. Enable internal reference (CONFIG3 = 0xE0)
+8. Configure master clock output to slave
+9. Wait 50ms for slave clock lock
+10. Enable test signal (1Hz square wave)
+11. Switch to 16 MHz for normal operation
+
+### Readiness Check
+```c
+// Loop until ADS1299 responds with correct ID
+while (true) {
+    xfer('M', 3, {0x20, 0x00, 0x00}, rx);  // Read register 0x00
+    if (rx[2] == 0x3E) break;               // Expected device ID
+    delay(10);
+}
+```
+
+---
+
+## 3. Network Architecture & Lifecycle
+
+### State Machine
+```
+DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
+     ↑              ↑                        ↓
+     └──────────────┴──── (timeout/stop) ───┘
+```
+
+### Discovery & Keep-Alive Protocol
+- **Beacon**: Single byte `0x0A` every 1 second when no peer found
+- **Keep-alive**: "floof" (5 bytes) required every 5 seconds
+- **Any packet** refreshes watchdog, but only "floof" bypasses command queue
+
+### Timeout Hierarchy
+1. **10s streaming watchdog**: No data → drop STREAMING to IDLE
+2. **10s global silence**: No packets at all → restart beacons
+3. **60s reconnect limit**: WiFi keeps failing → radio OFF, LED=LOST
+
+### LED Status Codes (250ms on, 5s cycle)
+- **Rapid flash**: Network setup mode (AP active)
+- **3 blinks**: Cannot connect to WiFi (DISCONNECTED)
+- **2 blinks**: Connected but IDLE
+- **1 blink**: STREAMING data
+- **5 blinks**: Connection LOST (failsafe triggered)
+
+### AsyncUDP Implementation
+- **TX**: Traditional WiFiUDP for sending
+- **RX**: Event-driven AsyncUDP (zero polling overhead)
+- **Queue**: 8-slot command queue, 512 bytes each
+- **Beacon filter**: Ignores own 0x0A beacons
+
+---
+
+## 4. Data Path Architecture
+
+### Frame Structure (52 bytes)
+```
+[48 bytes ADC data][4 bytes timestamp]
+    ↓                    ↓
+16 ch × 3 bytes      Little-endian
+Big-endian 24-bit    8µs timer units
+```
+
+### Packet Structure (max 1472 bytes)
+```
+[Frame 1][Frame 2]...[Frame N][Battery Voltage]
+52 bytes  52 bytes    max 28   4 bytes float32 LE
+```
+
+### Task Architecture
+1. **DRDY ISR** (IRAM): ~5µs to notify ADC task
+2. **ADC/DSP Task** (Priority MAX-1, Core 0):
+   - Triggered by task notification (not semaphore - 45% faster)
+   - Reads 54 bytes via SPI DMA
+   - Strips preambles (saves 6 bytes)
+   - Unpacks 24→32 bit with +8 bit headroom
+   - Runs DSP pipeline (FIR + IIRs)
+   - Packs back to 24-bit
+   - Queues complete packet
+
+3. **UDP Task** (Priority MAX-2, Core 0):
+   - Blocks on 5-slot queue
+   - Appends battery voltage
+   - Sends via WiFi
+
+### Queue Design
+- **5 slots** = 280ms buffer @ 500Hz
+- **ADC never blocks**: Skips enqueue if full
+- **FIFO order** guaranteed by FreeRTOS
+
+---
+
+## 5. Digital Signal Processing Pipeline
+
+### Overview
+All filters run at 160MHz with fixed-point math. Global enable + individual enables.
+
+### Filter Chain (Sequential, In-Place)
+```
+Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120] → Output
+         ↓                 ↓              ↓                ↓
+      Optional          Optional       Optional         Optional
+```
+
+### 1. FIR Equalizer (7-tap)
+- **Purpose**: Compensates ADS1299 sinc³ decimation rolloff
+- **Response**: Flat ±0dB from DC to 0.8×Nyquist
+- **Shift**: 30 bits output scaling
+- **Bypass**: True pass-through coefficients
+
+### 2. DC Blocker (2nd order Butterworth IIR)
+- **Cutoffs**: 0.5, 1, 2, 4, 8 Hz (runtime selectable)
+- **Coefficient sets**: 25 (5 sample rates × 5 cutoffs)
+- **Note**: 0.5Hz @ 4kHz can become unstable (resonator behavior)
+
+### 3. Notch Filters (4th order, cascaded biquads)
+- **50/60 Hz**: Q≈35, -40dB rejection
+- **100/120 Hz**: Same specs for harmonics
+- **Coefficient sets**: 10 each (5 rates × 2 regions)
+
+### Filter Math Details
+- **Data type**: int32_t[16] throughout
+- **Rounding**: Away from zero to prevent DC bias
+- **Headroom**: All stages stay within ±31 bits
+- **Reset**: Toggle off→on clears IIR states in <1ms
+
+### Important IIR Behavior
+**Problem**: Large spikes can cause ringing (phantom oscillations)
+**Solution**: `sys filters_off` → `sys filters_on` instantly resets states
+
+---
+
+## 6. SPI Communication Layer
+
+### Clock Management
+```c
+Configuration: 2 MHz (MUST use during setup)
+Streaming:     16 MHz (stable maximum)
+Mode:          SPI_MODE1 (CPOL=0, CPHA=1)
+```
+
+### Chip Select Control
+- **Method**: Direct register writes via WRITE_PERI_REG
+- **Timing**: 40ns edges (vs 1.2µs for digitalWrite)
+- **Sync**: Both CS lines toggle simultaneously
+- **Delays**: 2µs after CS LOW, 2µs before CS HIGH
+
+### Critical Transfer Function
+```c
+void xfer(target, length, txData, rxData) {
+    portENTER_CRITICAL();      // Block ALL interrupts
+    cs_both_high();            // Ensure clean state
+    
+    switch(target) {
+        'M': cs_master_low();  // Master only
+        'S': cs_slave_low();   // Slave only  
+        'B': cs_both_low();    // Both ADCs
+        'T': break;            // Test mode (no CS)
+    }
+    
+    esp_rom_delay_us(2);       // ≥4 SPI clocks
+    transferBytes();           // DMA burst
+    esp_rom_delay_us(2);       // ≥4 SPI clocks
+    cs_both_high();            // Deselect
+    portEXIT_CRITICAL();
+}
+```
+
+### Daisy-Chain Read Limitation
+**Current**: Can only read from Master
+**Slave read would require**:
+1. CS slave only
+2. Activate master
+3. Push 27 dummy bytes through master
+4. Next 27 bytes = slave data
+
+---
+
+## 7. Command Protocol
+
+### Format
+- **Transport**: UDP port 5000 (default)
+- **Encoding**: UTF-8 strings
+- **Termination**: Not required (packet boundary)
+
+### System Commands
+```
+sys start_cnt         Start streaming
+sys stop_cnt          Stop streaming
+sys adc_reset         Full ADC reset + sync
+sys esp_reboot        Complete reboot
+sys erase_flash       Wipe config → AP mode
+
+sys filters_on/off    Master filter switch
+sys filter_equalizer_on/off
+sys filter_dc_on/off
+sys filter_5060_on/off
+sys filter_100120_on/off
+
+sys networkfreq 50|60
+sys dccutofffreq 0.5|1|2|4|8
+sys digitalgain 1|2|4|8|16|32|64|128|256
+```
+
+### SPI Commands
+```
+spi M|S|B|T <len> <byte0> <byte1> ...
+M=Master, S=Slave, B=Both, T=Test
+Max 256 bytes per transaction
+```
+
+---
+
+## 8. Performance & Optimization Notes
+
+### CPU & Power
+- **CPU locked**: 160MHz (only +30mW vs 80MHz but huge headroom)
+- **Power**: 400mW @ 500Hz, 470mW @ 4kHz
+- **Battery**: 10+ hours on 1100mAh LiPo
+
+### Critical Timing
+- **DRDY ISR**: <15µs max (IRAM placement)
+- **CS edges**: 40ns (register writes)
+- **Context switch**: ~5µs when ADC task wakes
+
+### Memory & Queues
+- **Stack sizes**: ADC task 2048B, UDP task 2048B
+- **Queue depth**: 5 packets (280ms @ 500Hz)
+- **Packet size**: 1472B max (MTU limited)
+
+### Optimization Tricks
+- **Task notifications**: 45% faster than semaphores
+- **Direct register IO**: 30x faster than digitalWrite
+- **DMA transfers**: Cleaner edges than byte loops
+- **Fixed-point DSP**: Consistent timing, no float variance
+
+---
+
+## 9. Utility Functions & Helpers
+
+### safeTimeDelta()
+```c
+// Prevents -1 underflow if ISR updates timestamp mid-calculation
+return (now >= then) ? (now - then) : 0;
+```
+
+### Battery_Sense Class
+- **IIR filter**: α=0.05 default (20x jitter reduction)
+- **Period**: Configurable, default 32ms
+- **Scaling**: Hardware-specific calibration factor
+
+### Blinker Class
+- **Zero-cost**: Only writes on state changes
+- **Patterns**: Burst mode (N flashes per period)
+- **Polarity**: Handles active-high or active-low
+
+---
+
+## 10. Known Issues & Workarounds
+
+### Must Fix
+- **Slave SPI reads** not implemented (daisy-chain complexity)
+- **LED pattern #5** purpose not confirmed
+
+### Quirks to Remember
+- **WiFi + ADC2** = instant crash (hardware limitation)
+- **USB ground loops** = unusable data (physics problem)
+- **IIR at 0.5Hz/4kHz** = potential instability
+- **Python lacks arithmetic shift** = manual sign extension needed
+
+### Debug Features
+- **SERIAL_DEBUG**: Set to 1 in defines.h for verbose output
+- **Test mode 'T'**: Sends SPI clocks without CS for scope
+
+---
+
+## 🚨 Suspicious/Inconsistent Findings
+
+1. **Battery scale factor**: The precision (0.00123482072238899979173968476499) seems excessive for a voltage divider. Typical resistor tolerance is 1%.
+
+2. **Comment says "≥100s" timeout** but code uses 10s (10000ms). Big difference in user experience.
+
+3. **5 LED blinks** documented as "possibly error state" but code clearly sets this for "LOST" condition after failsafe.
+
+4. **BCI_MODE flag** in defines.h but no documentation about what changes when enabled.
+
+---
+
+## Quick Command Reference Card
+
+```bash
+# Start recording
+sys start_cnt
+
+# Stop recording  
+sys stop_cnt
+
+# Reset everything
+sys adc_reset     # Just ADCs
+sys esp_reboot    # Full system
+
+# Configure filters
+sys filters_on
+sys networkfreq 60      # US mains
+sys dccutofffreq 0.5    # Slow drift removal
+sys digitalgain 8       # 8x amplification
+
+# Debug
+spi M 3 0x20 0x00 0x00  # Read ADC ID
+```
+
+---
+
+*Happy hacking, silly woofer :3*
