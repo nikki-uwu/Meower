@@ -138,8 +138,8 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    UDP Packet (max 1472 bytes)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage     │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)   │
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
 └─────────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
@@ -154,59 +154,188 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16    │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes  │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit  │
+    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
     └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Why Single UDP Datagram?**
-- **Low latency**: No reassembly delays - data arrives as one complete unit
-- **Simplicity**: No need to handle fragmentation or packet reordering
-- **Reliability**: If a packet is lost, you lose one clean chunk, not partial data
-- **Real-time friendly**: Each packet is self-contained with complete frames
+### Why Single UDP Datagram?
+
+The board packs multiple frames into one UDP packet for critical performance reasons:
+
+1. **Latency Optimization**: Each UDP packet has overhead (headers, kernel processing). Sending 28 frames in one packet instead of 28 individual packets reduces this overhead by 28x.
+
+2. **Network Efficiency**: 
+   - Single packet: 1472 bytes payload + 28 bytes headers = 1500 bytes total
+   - 28 individual packets: 1456 bytes payload + 784 bytes headers = 2240 bytes total
+   - That's 49% more bandwidth wasted on headers!
+
+3. **Atomic Delivery**: UDP delivers the entire datagram or nothing. You either get all 28 frames intact or none - no partial data corruption.
+
+4. **Jitter Reduction**: Sending one packet every 56ms (at 500Hz) creates more consistent timing than 28 packets with microsecond gaps.
+
+5. **MTU Compliance**: At 1472 bytes, we stay under the standard Ethernet MTU of 1500 bytes, avoiding fragmentation which can cause packet loss.
 
 **Technical Details**:
 - **MTU Calculation**: Ethernet MTU (1500) - IP header (20) - UDP header (8) = 1472 bytes usable
 - **Max frames**: (1472 - 4) / 52 = 28 frames maximum per packet
 - **Timestamp units**: Hardware timestamp counts in 8 microsecond increments
-- **Byte order**: 
-  - Channel data: **Big-endian** (MSB first)
-  - Timestamp: **Little-endian** 
-  - Battery: **Little-endian** (IEEE 754 float)
+- **Byte order** (verified from source code): 
+  - Channel data: **Big-endian** (MSB first) - ADS1299 outputs this way
+  - Timestamp: **Little-endian** - ESP32 native format for efficiency  
+  - Battery: **Little-endian** (IEEE 754 float) - ESP32 native format
 
-### Data Conversion
-Each channel provides 24-bit signed ADC values. Convert to microvolts:
+### Basic Data Parsing
+
+Here's how to parse the UDP datagram, closely following the C implementation:
 
 ```python
-def convert_to_microvolts(raw_24bit, gain=1):
-    """Convert 24-bit ADC value to microvolts
+def parse_24bit_sample(byte0, byte1, byte2):
+    """
+    Convert 24-bit signed big-endian sample to float.
+    This matches the C code exactly from vrchat_board.cpp
     
     Args:
-        raw_24bit: 24-bit signed integer from ADC  
-        gain: PGA gain setting (1, 2, 4, 6, 8, 12, or 24)
-    
+        byte0: MSB (most significant byte)
+        byte1: Middle byte  
+        byte2: LSB (least significant byte)
+        
     Returns:
-        Voltage in microvolts
+        Float value of the raw ADC count
     """
-    # Sign extend 24-bit to 32-bit
+    # Combine 3 bytes into 24-bit value (big-endian)
+    # This matches C code: (frame_data[byte_offset] << 16) | (frame_data[byte_offset + 1] << 8) | frame_data[byte_offset + 2]
+    raw_24bit = (byte0 << 16) | (byte1 << 8) | byte2
+    
+    # Sign extension: Convert 24-bit signed to 32-bit signed
+    # Check if negative (bit 23 set, which is 0x800000)
     if raw_24bit & 0x800000:
+        # Sign extend to 32-bit by setting upper bits
+        # This matches C code: (int32_t)(raw_24bit << 8) >> 8
         raw_24bit |= 0xFF000000
+        # Convert to signed integer
+        import struct
+        raw_value = struct.unpack('>i', struct.pack('>I', raw_24bit))[0]
+    else:
+        # Positive value - use as is
+        raw_value = raw_24bit
     
-    # Convert to voltage
-    # ADS1299 LSB = 4.5V / gain / (2^23 - 1)
-    # Per datasheet: ±4.5V reference, 24-bit resolution
-    lsb = 4.5 / gain / 8388607  
-    voltage = raw_24bit * lsb
+    # Return as float (no gain, no scaling - just raw ADC count)
+    return float(raw_value)
+
+
+def parse_eeg_datagram(udp_data):
+    """
+    Parse UDP datagram containing EEG frames and battery voltage.
+    Handles variable number of frames (1-28) automatically.
+    This closely mirrors the C code in vrchat_board.cpp.
     
-    return voltage * 1000000  # Convert to µV
+    Args:
+        udp_data: Raw bytes from UDP packet
+        
+    Returns:
+        frames: List of dicts with 'channels' and 'timestamp'
+        battery_voltage: Float voltage in volts
+    """
+    # Constants from defines.h and vrchat_board.cpp
+    CHANNELS_PER_BOARD = 16
+    BYTES_PER_CHANNEL = 3  # 24-bit samples
+    CHANNEL_DATA_SIZE = CHANNELS_PER_BOARD * BYTES_PER_CHANNEL  # 48 bytes
+    TIMESTAMP_SIZE = 4  # 32-bit timestamp
+    FRAME_SIZE = CHANNEL_DATA_SIZE + TIMESTAMP_SIZE  # 52 bytes
+    BATTERY_SIZE = 4  # 32-bit float
+    
+    # Validate packet size (matches C validation)
+    packet_size = len(udp_data)
+    if packet_size < FRAME_SIZE + BATTERY_SIZE:
+        raise ValueError(f"Packet too small: {packet_size} bytes (minimum: {FRAME_SIZE + BATTERY_SIZE})")
+    
+    # Calculate number of frames - exactly like C code
+    if (packet_size - BATTERY_SIZE) % FRAME_SIZE != 0:
+        raise ValueError(f"Invalid packet size: {packet_size} bytes")
+    
+    num_frames = (packet_size - BATTERY_SIZE) // FRAME_SIZE
+    
+    frames = []
+    
+    # Process each frame - matches C loop structure
+    for frame_idx in range(num_frames):
+        # Calculate offset to current frame
+        frame_offset = frame_idx * FRAME_SIZE
+        
+        # Extract 16 channels (48 bytes)
+        channels = []
+        for ch in range(CHANNELS_PER_BOARD):
+            # Calculate byte offset for this channel
+            byte_offset = frame_offset + (ch * BYTES_PER_CHANNEL)
+            
+            # Extract 3 bytes and convert to signed value
+            raw_value = parse_24bit_sample(
+                udp_data[byte_offset],
+                udp_data[byte_offset + 1],
+                udp_data[byte_offset + 2]
+            )
+            
+            channels.append(raw_value)
+        
+        # Extract hardware timestamp (4 bytes, little-endian)
+        # Matches C: memcpy(&dataBuffer[bytesWritten + ADC_PARSED_FRAME], &timeStamp, sizeof(timeStamp))
+        timestamp_offset = frame_offset + CHANNEL_DATA_SIZE
+        import struct
+        hw_timestamp = struct.unpack('<I', udp_data[timestamp_offset:timestamp_offset + 4])[0]
+        
+        # Timestamp is in 8 microsecond units (from getTimer8us() in C code)
+        frames.append({
+            'channels': channels,  # Raw ADC counts as floats
+            'timestamp': hw_timestamp  # Raw timestamp value (multiply by 8 for microseconds)
+        })
+    
+    # Extract battery voltage (last 4 bytes, little-endian float)
+    # Matches C: memcpy(&txBuf[ADC_PACKET_BYTES], &vbatt, Battery_Sense::DATA_SIZE)
+    battery_offset = num_frames * FRAME_SIZE
+    battery_voltage = struct.unpack('<f', udp_data[battery_offset:battery_offset + 4])[0]
+    
+    return frames, battery_voltage
+```
+
+**Note**: 
+- To convert raw ADC counts to voltage: multiply by `4.5 / (2^23) = 0.536 µV/count`
+- To convert timestamp to microseconds: multiply by 8
+- The parsing exactly matches the C implementation for compatibility
+
+For complete examples including:
+- Full UDP receiver with keep-alive
+- Real-time plotting GUI
+- Data recording and playback
+- Filtering and processing
+
+Check the `python/` folder in the repository which contains a complete working application with GUI and all parsing logic.
+
+### Data Conversion Reference
+
+The ADS1299 outputs 24-bit signed values. To convert to physical units:
+
+```
+Raw ADC value → Voltage conversion:
+- LSB size = 4.5V / (2^23) = 0.536 microvolts per count
+- Voltage = raw_value * 0.536 µV (at gain=1)
+
+For other gains, divide by the gain setting:
+- Gain 1:  ±4.5V range
+- Gain 2:  ±2.25V range  
+- Gain 4:  ±1.125V range
+- Gain 6:  ±750mV range
+- Gain 8:  ±562.5mV range
+- Gain 12: ±375mV range
+- Gain 24: ±187.5mV range
 ```
 
 **Important Notes**:
-- Channel data uses **big-endian** byte order (MSB first)
-- Hardware timestamp uses **little-endian** byte order
-- Timestamp units: 8 microseconds since board power-on
-- Battery voltage: 32-bit float, little-endian
+- Channel data arrives in **big-endian** format (verified in source)
+- Timestamps and battery voltage are **little-endian**
+- Timestamp increments every 8 microseconds
+- Battery voltage is standard IEEE 754 32-bit float
 
 ## 4. 🎛️ Configuration & Control
 
@@ -323,7 +452,6 @@ apply
 ```python
 import socket
 import struct
-import numpy as np
 import time
 
 # Setup
@@ -350,41 +478,46 @@ import threading
 keepalive_thread = threading.Thread(target=send_keepalive, daemon=True)
 keepalive_thread.start()
 
+# Parse function (matches C implementation)
+def parse_24bit_to_float(b0, b1, b2):
+    """Convert 3 bytes (big-endian) to signed float"""
+    raw = (b0 << 16) | (b1 << 8) | b2
+    if raw & 0x800000:  # Check sign bit
+        raw |= 0xFF000000  # Sign extend
+        raw = struct.unpack('>i', struct.pack('>I', raw))[0]
+    return float(raw)
+
 # Receive data
 while True:
     try:
-        # Board sends complete packets up to 1472 bytes, safe to read 1500
+        # Read complete datagram (up to 1500 bytes)
         data, addr = data_sock.recvfrom(1500)
         
-        # Calculate number of frames (subtract battery bytes)
+        # Calculate frames (packet size - battery) / frame size
         num_frames = (len(data) - 4) // 52
         
-        # Extract battery voltage (last 4 bytes, little-endian float)
+        # Extract battery (last 4 bytes)
         battery = struct.unpack('<f', data[-4:])[0]
         
+        # Process each frame
         for i in range(num_frames):
             frame_start = i * 52
-            frame = data[frame_start:frame_start + 52]
             
-            # Extract 16 channels (3 bytes each, big-endian)
-            channels = []
-            for ch in range(16):
-                offset = ch * 3
-                # Big-endian: MSB first
-                raw = (frame[offset] << 16) | (frame[offset+1] << 8) | frame[offset+2]
-                
-                # Sign extend 24-bit to 32-bit
-                if raw & 0x800000:
-                    raw |= 0xFF000000
-                    raw = struct.unpack('i', struct.pack('I', raw))[0]
-                
-                channels.append(raw)
+            # Parse first channel as example
+            ch0_raw = parse_24bit_to_float(
+                data[frame_start], 
+                data[frame_start + 1], 
+                data[frame_start + 2]
+            )
             
-            # Get hardware timestamp (bytes 48-51, little-endian, units: 8µs)
-            hw_timestamp = struct.unpack('<I', frame[48:52])[0]
-            timestamp_seconds = hw_timestamp * 0.000008
+            # Get timestamp (little-endian, 8µs units)
+            ts = struct.unpack('<I', data[frame_start + 48:frame_start + 52])[0]
             
-            print(f"Time: {timestamp_seconds:.3f}s, Ch0: {channels[0]}, Battery: {battery:.2f}V")
+            # Convert to physical units if needed
+            ch0_uV = ch0_raw * 0.536  # At gain=1
+            ts_ms = ts * 0.008  # Convert to milliseconds
+            
+            print(f"Time: {ts_ms:.1f}ms, Ch0: {ch0_uV:.2f}µV, Battery: {battery:.2f}V")
             
     except socket.timeout:
         continue
