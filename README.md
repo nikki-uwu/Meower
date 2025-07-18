@@ -4,7 +4,7 @@
 
 A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals with research-grade quality. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi at up to 4000 Hz - just power on, connect, and start recording.
 
-**Note**: The board is currently preconfigured for VRChat BCI use. If you have questions ("oh silly woofer, why are you here, what are you doing :3"), just ask - I'll help set up everything! It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later!
+**Note**: The board is currently preconfigured for VRChat BCI use. If you have questions (oh silly woofer, why are you here, what are you doing, run :3), just ask - I'll help set up everything. It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later... maybe, who knows, not me for sure :3
 
 ## ⚠️ Safety Information
 
