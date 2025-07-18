@@ -6,7 +6,7 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 
 **Note**: The board is currently preconfigured for VRChat BCI use. If you have questions ("oh silly woofer, why are you here, what are you doing :3"), just ask - I'll help set up everything! It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later!
 
-## 2. ⚠️ Safety Information
+## ⚠️ Safety Information
 
 **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only** - USB introduces significant noise that ruins signal quality.
 
@@ -17,18 +17,16 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 
 | Section | Description |
 |---------|-------------|
-| **1. 🧠 Project Overview** | What this board is and does |
-| **2. ⚠️ Safety Information** | Critical safety and performance guidelines |
-| **3. ⚡ Quick Start** | Get data flowing in under 10 minutes |
-| **4. 🔧 Building From Source** | Compile and upload custom firmware |
-| **5. 📊 Data Format** | Channel mapping and packet structure |
-| **6. 🎛️ Configuration** | Commands and settings |
-| **7. 🎬 DSP Filter Details** | Digital signal processing implementation |
-| **8. 🔬 Raw SPI Access** | Direct ADC communication |
-| **9. 📈 Specifications** | Technical details and performance |
-| **10. 🛠️ Troubleshooting** | Common issues and solutions |
+| **1. ⚡ Quick Start** | Get data flowing in under 10 minutes |
+| **2. 🔧 Building From Source** | Compile and upload custom firmware |
+| **3. 📊 Data Format** | Channel mapping and packet structure |
+| **4. 🎛️ Configuration** | Commands and settings |
+| **5. 🎬 DSP Filter Details** | Digital signal processing implementation |
+| **6. 🔬 Raw SPI Access** | Direct ADC communication |
+| **7. 📈 Specifications** | Technical details and performance |
+| **8. 🛠️ Troubleshooting** | Common issues and solutions |
 
-## 3. ⚡ Quick Start
+## 1. ⚡ Quick Start
 
 ### What You'll Need
 - Meower board (this board)
@@ -83,7 +81,7 @@ After configuration, the LED shows board status:
 - **1 blink every 5 seconds**: Streaming data
 - **5 blinks**: [To be confirmed - possibly error state]
 
-## 4. 🔧 Building From Source
+## 2. 🔧 Building From Source
 
 ### Prerequisites
 | Software | Version | Download |
@@ -117,7 +115,7 @@ After configuration, the LED shows board status:
 - **CH340 drivers**: ESP32-C3 has built-in USB - no drivers needed! (Unlike older ESP32)
 - If still having issues, try a different USB cable or port
 
-## 5. 📊 Data Format & Channel Mapping
+## 3. 📊 Data Format & Channel Mapping
 
 ### Channel Numbering
 
@@ -252,10 +250,11 @@ def parse_24bit_sample(b0, b1, b2):
     
     # Step 2: Sign extend if negative
     if raw_24bit & 0x800000:  # Check bit 23
-        raw_24bit |= 0xFF000000  # Set upper 8 bits
-        # Convert unsigned to signed
-        import struct
-        raw_24bit = struct.unpack('>i', struct.pack('>I', raw_24bit))[0]
+        raw_24bit |= 0xFF000000  # Set upper 8 bits to 1
+    
+    # Convert to signed 32-bit integer
+    if raw_24bit >= 0x80000000:
+        raw_24bit = raw_24bit - 0x100000000
     
     return float(raw_24bit)
 ```
@@ -292,7 +291,7 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 - Timestamp increments every 8 microseconds
 - Battery voltage is standard IEEE 754 32-bit float
 
-## 6. 🎛️ Configuration & Control
+## 4. 🎛️ Configuration & Control
 
 ### Network Ports & Communication
 - **Control Port**: 5000 (UDP) - Commands and configuration (default, configurable)
@@ -352,7 +351,7 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 - Example: ON for 1s → OFF for 30s → ON for 1s → OFF for 2 minutes → ON for 1s → OFF → ON = Reset!
 - The board recognizes reset reason - other resets (USB, button, watchdog) won't trigger setup mode
 
-## 7. 🎬 DSP Filter Implementation Details
+## 5. 🎬 DSP Filter Implementation Details
 
 The board processes incoming signals through three cascaded biquad filters, all running at 160MHz with fixed-point math for consistent performance:
 
@@ -396,7 +395,7 @@ All filter coefficients are pre-calculated by a Python script (included in sourc
 
 **Quick fix**: Toggle the filter off and back on (`sys filters_off` → `sys filters_on`). This takes <1ms and completely resets the filter states, stopping any ringing immediately.
 
-## 8. 🔬 Raw SPI Access
+## 6. 🔬 Raw SPI Access
 
 Direct SPI access allows low-level communication with the ADS1299 chips via WiFi UDP commands. Useful for custom configurations or debugging.
 
@@ -464,7 +463,7 @@ spi M 3 0x45 0x07 0x00
 - Send RDATAC (0x10) to resume continuous data mode
 - Refer to ADS1299 datasheet for complete register map
 
-## 9. 📈 Specifications
+## 7. 📈 Specifications
 
 ### Hardware
 - **Microcontroller**: ESP32-C3 (RISC-V, 160MHz, WiFi 2.4GHz)
@@ -484,7 +483,7 @@ spi M 3 0x45 0x07 0x00
 - **WiFi Range**: 30m typical indoor
 - **Network Latency**: <10ms typical
 
-## 10. 🛠️ Troubleshooting
+## 8. 🛠️ Troubleshooting
 
 ### Board Not Detected
 1. Check USB cable (must support data, not charge-only)
