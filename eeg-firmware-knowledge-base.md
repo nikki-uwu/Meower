@@ -298,6 +298,19 @@ Max 256 bytes per transaction
 - **Stack sizes**: ADC task 2048B, UDP task 2048B
 - **Queue depth**: 5 packets (280ms @ 500Hz)
 - **Packet size**: 1472B max (MTU limited)
+- **Blocking behavior**:
+  - ADC/DSP task: NEVER blocks - skips enqueue if queue full
+  - Data TX task: Blocks waiting for data (normal producer-consumer)
+
+### WiFi Power Optimization
+```c
+WiFi.setSleep(true);               // Modem sleeps between DTIM beacons
+cfg.sta.listen_interval = 1;       // Wake every beacon interval
+esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Deepest power-save mode
+```
+- Allows WiFi modem to sleep between packets
+- Significantly reduces idle power consumption
+- No impact on streaming performance
 
 ### Optimization Tricks
 - **Task notifications**: 45% faster than semaphores
