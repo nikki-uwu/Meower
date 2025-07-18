@@ -4,6 +4,8 @@
 
 A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals with research-grade quality. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi at up to 4000 Hz - just power on, connect, and start recording.
 
+**Note**: The board is currently preconfigured for VRChat BCI use. If you have questions ("oh silly woofer, why are you here, what are you doing :3"), just ask - I'll help set up everything! It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later!
+
 ## 2. ⚠️ Safety Information
 
 **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only** - USB introduces significant noise that ruins signal quality.
@@ -21,9 +23,10 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 | **4. 🔧 Building From Source** | Compile and upload custom firmware |
 | **5. 📊 Data Format** | Channel mapping and packet structure |
 | **6. 🎛️ Configuration** | Commands and settings |
-| **7. 🔬 Raw SPI Access** | Direct ADC communication |
-| **8. 📈 Specifications** | Technical details and performance |
-| **9. 🛠️ Troubleshooting** | Common issues and solutions |
+| **7. 🎬 DSP Filter Details** | Digital signal processing implementation |
+| **8. 🔬 Raw SPI Access** | Direct ADC communication |
+| **9. 📈 Specifications** | Technical details and performance |
+| **10. 🛠️ Troubleshooting** | Common issues and solutions |
 
 ## 3. ⚡ Quick Start
 
@@ -142,8 +145,8 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    UDP Packet (max 1472 bytes)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage     │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)   │
 └─────────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
@@ -158,9 +161,9 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
+    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16    │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes  │
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit  │
     └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,11 +187,14 @@ The board packs multiple frames into one UDP packet for critical performance rea
 **Technical Details**:
 - **MTU Calculation**: Ethernet MTU (1500) - IP header (20) - UDP header (8) = 1472 bytes usable
 - **Max frames**: (1472 - 4) / 52 = 28 frames maximum per packet
+- **Default frames per packet**: 10 (configurable in `defines.h`)
 - **Timestamp units**: Hardware timestamp counts in 8 microsecond increments
 - **Byte order** (verified from source code): 
   - Channel data: **Big-endian** (MSB first) - ADS1299 outputs this way
   - Timestamp: **Little-endian** - ESP32 native format for efficiency  
   - Battery: **Little-endian** (IEEE 754 float) - ESP32 native format
+
+**Advanced Configuration**: Some parameters can be changed in `defines.h` (frames per packet, ports, timing, etc.) but think 10 times before changing anything! Ask for help - I'm always here and will make it easier to configure over time.
 
 ### Basic Data Parsing
 
@@ -198,16 +204,16 @@ The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-e
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        48 Bytes of ADC Data                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │                 │
-│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│                 │
+│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │               │
+│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│               │
 └─────────────────────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    One Channel = 3 Bytes (Big-Endian)                       │
+│                    One Channel = 3 Bytes (Big-Endian)                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│      Byte 0        │     Byte 1        │     Byte 2                         │
-│     MSB (b0)       │    Middle (b1)    │    LSB (b2)                        │
-│  [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]                  │
+│     Byte 0      │     Byte 1      │     Byte 2      │                     │
+│   MSB (b0)      │   Middle (b1)   │    LSB (b2)     │                     │
+│  [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0]                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -346,7 +352,119 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 - Example: ON for 1s → OFF for 30s → ON for 1s → OFF for 2 minutes → ON for 1s → OFF → ON = Reset!
 - The board recognizes reset reason - other resets (USB, button, watchdog) won't trigger setup mode
 
-## 8. 📈 Specifications
+## 7. 🎬 DSP Filter Implementation Details
+
+The board processes incoming signals through three cascaded biquad filters, all running at 160MHz with fixed-point math for consistent performance:
+
+### Filter Chain Architecture
+1. **2-Pole Equalizer (FIR)** → 2. **DC Blocker (IIR)** → 3. **Notch Filters (IIR)**
+
+### 1. Frequency Response Equalizer
+- **Purpose**: Compensates for the ADS1299's inherent frequency rolloff from its sinc³ decimation filter
+- **Type**: 2-pole equalizer maintaining flat response (≈0 dB) from DC to 0.8×Nyquist
+- **Example**: At 250 Hz sampling, provides flat response from 0-100 Hz
+- **Why needed**: Without this, higher EEG frequencies (gamma band) appear artificially attenuated
+
+### 2. DC Removal Filter  
+- **Type**: 2nd order Butterworth high-pass (no Q factor)
+- **Cutoff options**: 0.5, 1, 2, 4, 8 Hz (selectable via `sys dccutofffreq`)
+- **Behavior**: 
+  - Removes electrode drift and DC offsets
+  - Preserves fast transients (blinks, eye movements) as sharp spikes instead of long DC steps
+  - Coefficients recalculated on-the-fly for any sampling rate
+
+### 3. Mains Interference Notch Filters
+- **Configuration**: Two cascaded biquads per frequency
+- **Q Factor**: ~35 (very narrow notch)
+- **Attenuation**: -40 dB at target frequencies
+- **Options**: 
+  - 50 Hz + 100 Hz (Europe/Asia)
+  - 60 Hz + 120 Hz (Americas)
+- **Purpose**: Real-time recording cleanup; heavier processing can be done offline
+
+### Filter Coefficient Generation
+All filter coefficients are pre-calculated by a Python script (included in source) that:
+- Generates optimal coefficients for each sampling rate (250-4000 Hz)
+- Scales to 32-bit fixed-point for integer math
+- Ensures unity gain at passband to prevent clipping
+- Can be regenerated if you modify fs, fc, or Q parameters
+
+### Important IIR Filter Behavior
+**Spike Recovery**: IIR filters can ring when hit with large transients (like electrode pops or movement artifacts). If you see:
+- Phantom 50/60 Hz oscillations after a spike
+- Slowly drifting baseline after movement
+
+**Quick fix**: Toggle the filter off and back on (`sys filters_off` → `sys filters_on`). This takes <1ms and completely resets the filter states, stopping any ringing immediately.
+
+## 8. 🔬 Raw SPI Access
+
+Direct SPI access allows low-level communication with the ADS1299 chips via WiFi UDP commands. Useful for custom configurations or debugging.
+
+### Command Format
+```
+spi [target] [length] [byte0] [byte1] ... [byteN]
+```
+
+**Parameters:**
+- `target`: Which ADC to communicate with
+  - `M` or `MASTER` - Master ADS1299 only
+  - `S` or `SLAVE` - Slave ADS1299 only  
+  - `B` or `BOTH` - Both ADCs simultaneously
+- `length`: Number of bytes to send (1-256)
+- `bytes`: Hex values to send (e.g., 0x20, 0x00)
+
+**Response**: Board returns the same number of bytes received from SPI
+
+### Current Limitations (as of 2025.07.18)
+- **Writing**: Works for Master, Slave, and Both targets
+- **Reading**: Only works from Master ADC
+- **Slave reading not implemented**: Due to daisy-chain configuration, reading from slave would require:
+  1. Chip select slave only
+  2. Activate master 
+  3. Push 27 dummy bytes through master
+  4. Next 27 bytes would be slave data
+  
+This follows the same principle as ADC sample reading in daisy-chain mode.
+
+### Common Examples
+
+**Read Device ID from Master (should return 0x3E for ADS1299):**
+```
+spi M 3 0x20 0x00 0x00
+```
+- 0x20 = Read register 0x00 (device ID)
+- Response: [XX, XX, 0x3E]
+
+**Read Configuration Register 1:**
+```
+spi M 3 0x21 0x00 0x00
+```
+- 0x21 = Read register 0x01
+- Response shows current sampling rate and daisy chain config
+
+**Write to Configuration Register 3 (enable internal reference):**
+```
+spi B 3 0x43 0x00 0xE0
+```
+- 0x43 = Write to register 0x03
+- 0xE0 = Enable internal reference buffer
+- Works for both ADCs simultaneously
+
+**Read All Channel Settings (Master only):**
+```
+spi M 3 0x45 0x07 0x00
+```
+- 0x45 = Read starting at register 0x05 (CH1SET)
+- 0x07 = Read 8 registers (all channels)
+
+### Important Notes
+- Board automatically handles CS (chip select) for the specified target
+- All transactions use 2 MHz SPI clock for reliability
+- Always send SDATAC (0x11) before configuration changes
+- Send RDATAC (0x10) to resume continuous data mode
+- Refer to ADS1299 datasheet for complete register map
+
+## 9. 📈 Specifications
 
 ### Hardware
 - **Microcontroller**: ESP32-C3 (RISC-V, 160MHz, WiFi 2.4GHz)
@@ -362,10 +480,11 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 ### Performance
 - **Power Consumption**: ~400mW (typical during streaming)
 - **Battery Life**: 10+ hours with 1100mAh LiPo
+- **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
 - **WiFi Range**: 30m typical indoor
 - **Network Latency**: <10ms typical
 
-## 9. 🛠️ Troubleshooting
+## 10. 🛠️ Troubleshooting
 
 ### Board Not Detected
 1. Check USB cable (must support data, not charge-only)
