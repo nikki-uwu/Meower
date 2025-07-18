@@ -6,10 +6,10 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 
 ## 2. ⚠️ Safety Information
 
-**WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment.
+**WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only** - USB introduces significant noise that ruins signal quality.
 
 ### Performance & Noise Considerations
-**For lowest noise and best performance, use battery power only!** Even from a pure performance standpoint, battery operation is essential - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. Always disconnect USB after configuration for research-quality recordings.
+Even from a pure performance standpoint, battery operation is essential - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. Always disconnect USB after configuration for research-quality recordings.
 
 ## 📚 What's in This Guide
 
@@ -21,8 +21,9 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 | **4. 🔧 Building From Source** | Compile and upload custom firmware |
 | **5. 📊 Data Format** | Channel mapping and packet structure |
 | **6. 🎛️ Configuration** | Commands and settings |
-| **7. 📈 Specifications** | Technical details and performance |
-| **8. 🛠️ Troubleshooting** | Common issues and solutions |
+| **7. 🔬 Raw SPI Access** | Direct ADC communication |
+| **8. 📈 Specifications** | Technical details and performance |
+| **9. 🛠️ Troubleshooting** | Common issues and solutions |
 
 ## 3. ⚡ Quick Start
 
@@ -141,8 +142,8 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    UDP Packet (max 1472 bytes)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage     │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)   │
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
 └─────────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
@@ -157,9 +158,9 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16    │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes  │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit  │
+    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
     └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -197,16 +198,16 @@ The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-e
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        48 Bytes of ADC Data                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │               │
-│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│               │
+│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │                 │
+│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│                 │
 └─────────────────────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    One Channel = 3 Bytes (Big-Endian)                      │
+│                    One Channel = 3 Bytes (Big-Endian)                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│     Byte 0      │     Byte 1      │     Byte 2      │                     │
-│   MSB (b0)      │   Middle (b1)   │    LSB (b2)     │                     │
-│  [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0]                   │
+│     Byte 0      │     Byte 1      │     Byte 2      │                       │
+│   MSB (b0)      │   Middle (b1)   │    LSB (b2)     │                       │
+│  [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0]                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -345,11 +346,13 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 - Example: ON for 1s → OFF for 30s → ON for 1s → OFF for 2 minutes → ON for 1s → OFF → ON = Reset!
 - The board recognizes reset reason - other resets (USB, button, watchdog) won't trigger setup mode
 
-## 7. 📈 Specifications
+## 8. 📈 Specifications
 
 ### Hardware
 - **Microcontroller**: ESP32-C3 (RISC-V, 160MHz, WiFi 2.4GHz)
 - **ADC**: 2× Texas Instruments ADS1299 (24-bit, 8 channels each)
+- **ADC Configuration**: Daisy-chain mode - slave ADC data output connects to master ADC data input, ESP32 only reads from master
+- **Clock Synchronization**: Slave ADC uses master's clock output and reference for perfect sync
 - **Channels**: 16 differential inputs
 - **Sampling Rates**: 250, 500, 1000, 2000, 4000 Hz
 - **Resolution**: 24-bit (0.536 μV/bit at gain=1)
@@ -362,7 +365,7 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 - **WiFi Range**: 30m typical indoor
 - **Network Latency**: <10ms typical
 
-## 8. 🛠️ Troubleshooting
+## 9. 🛠️ Troubleshooting
 
 ### Board Not Detected
 1. Check USB cable (must support data, not charge-only)
