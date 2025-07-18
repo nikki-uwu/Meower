@@ -209,8 +209,8 @@ The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-e
 ┌─────────────────────────────────────────────────────────────┐
 │              One Channel = 3 Bytes (Big-Endian)             │
 ├─────────────────────────────────────────────────────────────┤
-│      Byte 0        │     Byte 1        │     Byte 2         │
-│     MSB (b0)       │    Middle (b1)    │    LSB (b2)        │
+│       Byte 0       │      Byte 1       │      Byte 2        │
+│      MSB (b0)      │    Middle (b1)    │     LSB (b2)       │
 │  [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]  │
 └─────────────────────────────────────────────────────────────┘
 ```
