@@ -8,7 +8,7 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 
 ## ⚠️ Safety Information
 
-**WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only** - USB introduces significant noise that ruins signal quality.
+**WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only**
 
 ### Performance & Noise Considerations
 Even from a pure performance standpoint, battery operation is essential - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. Always disconnect USB after configuration for research-quality recordings.
@@ -143,8 +143,8 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    UDP Packet (max 1472 bytes)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage     │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)   │
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
 └─────────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
@@ -159,9 +159,9 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16    │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes  │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit  │
+    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
     └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -202,16 +202,16 @@ The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-e
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        48 Bytes of ADC Data                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │               │
-│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│               │
+│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │                 │
+│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│                 │
 └─────────────────────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    One Channel = 3 Bytes (Big-Endian)                      │
+│                    One Channel = 3 Bytes (Big-Endian)                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│     Byte 0      │     Byte 1      │     Byte 2      │                     │
-│   MSB (b0)      │   Middle (b1)   │    LSB (b2)     │                     │
-│  [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0]                   │
+│      Byte 0        │     Byte 1        │     Byte 2       │                 │
+│     MSB (b0)       │    Middle (b1)    │    LSB (b2)      │                 │
+│  [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]   [7 6 5 4 3 2 1 0]                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
