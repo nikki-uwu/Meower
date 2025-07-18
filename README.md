@@ -138,8 +138,8 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    UDP Packet (max 1472 bytes)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage     │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)   │
 └─────────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
@@ -154,9 +154,9 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
+    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16    │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes  │
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit  │
     └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -188,129 +188,69 @@ The board packs multiple frames into one UDP packet for critical performance rea
 
 ### Basic Data Parsing
 
-Here's how to parse the UDP datagram, closely following the C implementation:
+The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-endian format:
 
-```python
-def parse_24bit_sample(byte0, byte1, byte2):
-    """
-    Convert 24-bit signed big-endian sample to float.
-    This matches the C code exactly from vrchat_board.cpp
-    
-    Args:
-        byte0: MSB (most significant byte)
-        byte1: Middle byte  
-        byte2: LSB (least significant byte)
-        
-    Returns:
-        Float value of the raw ADC count
-    """
-    # Combine 3 bytes into 24-bit value (big-endian)
-    # This matches C code: (frame_data[byte_offset] << 16) | (frame_data[byte_offset + 1] << 8) | frame_data[byte_offset + 2]
-    raw_24bit = (byte0 << 16) | (byte1 << 8) | byte2
-    
-    # Sign extension: Convert 24-bit signed to 32-bit signed
-    # Check if negative (bit 23 set, which is 0x800000)
-    if raw_24bit & 0x800000:
-        # Sign extend to 32-bit by setting upper bits
-        # This matches C code: (int32_t)(raw_24bit << 8) >> 8
-        raw_24bit |= 0xFF000000
-        # Convert to signed integer
-        import struct
-        raw_value = struct.unpack('>i', struct.pack('>I', raw_24bit))[0]
-    else:
-        # Positive value - use as is
-        raw_value = raw_24bit
-    
-    # Return as float (no gain, no scaling - just raw ADC count)
-    return float(raw_value)
-
-
-def parse_eeg_datagram(udp_data):
-    """
-    Parse UDP datagram containing EEG frames and battery voltage.
-    Handles variable number of frames (1-28) automatically.
-    This closely mirrors the C code in vrchat_board.cpp.
-    
-    Args:
-        udp_data: Raw bytes from UDP packet
-        
-    Returns:
-        frames: List of dicts with 'channels' and 'timestamp'
-        battery_voltage: Float voltage in volts
-    """
-    # Constants from defines.h and vrchat_board.cpp
-    CHANNELS_PER_BOARD = 16
-    BYTES_PER_CHANNEL = 3  # 24-bit samples
-    CHANNEL_DATA_SIZE = CHANNELS_PER_BOARD * BYTES_PER_CHANNEL  # 48 bytes
-    TIMESTAMP_SIZE = 4  # 32-bit timestamp
-    FRAME_SIZE = CHANNEL_DATA_SIZE + TIMESTAMP_SIZE  # 52 bytes
-    BATTERY_SIZE = 4  # 32-bit float
-    
-    # Validate packet size (matches C validation)
-    packet_size = len(udp_data)
-    if packet_size < FRAME_SIZE + BATTERY_SIZE:
-        raise ValueError(f"Packet too small: {packet_size} bytes (minimum: {FRAME_SIZE + BATTERY_SIZE})")
-    
-    # Calculate number of frames - exactly like C code
-    if (packet_size - BATTERY_SIZE) % FRAME_SIZE != 0:
-        raise ValueError(f"Invalid packet size: {packet_size} bytes")
-    
-    num_frames = (packet_size - BATTERY_SIZE) // FRAME_SIZE
-    
-    frames = []
-    
-    # Process each frame - matches C loop structure
-    for frame_idx in range(num_frames):
-        # Calculate offset to current frame
-        frame_offset = frame_idx * FRAME_SIZE
-        
-        # Extract 16 channels (48 bytes)
-        channels = []
-        for ch in range(CHANNELS_PER_BOARD):
-            # Calculate byte offset for this channel
-            byte_offset = frame_offset + (ch * BYTES_PER_CHANNEL)
-            
-            # Extract 3 bytes and convert to signed value
-            raw_value = parse_24bit_sample(
-                udp_data[byte_offset],
-                udp_data[byte_offset + 1],
-                udp_data[byte_offset + 2]
-            )
-            
-            channels.append(raw_value)
-        
-        # Extract hardware timestamp (4 bytes, little-endian)
-        # Matches C: memcpy(&dataBuffer[bytesWritten + ADC_PARSED_FRAME], &timeStamp, sizeof(timeStamp))
-        timestamp_offset = frame_offset + CHANNEL_DATA_SIZE
-        import struct
-        hw_timestamp = struct.unpack('<I', udp_data[timestamp_offset:timestamp_offset + 4])[0]
-        
-        # Timestamp is in 8 microsecond units (from getTimer8us() in C code)
-        frames.append({
-            'channels': channels,  # Raw ADC counts as floats
-            'timestamp': hw_timestamp  # Raw timestamp value (multiply by 8 for microseconds)
-        })
-    
-    # Extract battery voltage (last 4 bytes, little-endian float)
-    # Matches C: memcpy(&txBuf[ADC_PACKET_BYTES], &vbatt, Battery_Sense::DATA_SIZE)
-    battery_offset = num_frames * FRAME_SIZE
-    battery_voltage = struct.unpack('<f', udp_data[battery_offset:battery_offset + 4])[0]
-    
-    return frames, battery_voltage
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        48 Bytes of ADC Data                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Ch0    │ Ch1    │ Ch2    │ Ch3    │ ... │ Ch14   │ Ch15   │               │
+│ 3 bytes│ 3 bytes│ 3 bytes│ 3 bytes│     │ 3 bytes│ 3 bytes│               │
+└─────────────────────────────────────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    One Channel = 3 Bytes (Big-Endian)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│     Byte 0      │     Byte 1      │     Byte 2      │                     │
+│   MSB (b0)      │   Middle (b1)   │    LSB (b2)     │                     │
+│  [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0] [7 6 5 4 3 2 1 0]                   │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Note**: 
-- To convert raw ADC counts to voltage: multiply by `4.5 / (2^23) = 0.536 µV/count`
-- To convert timestamp to microseconds: multiply by 8
-- The parsing exactly matches the C implementation for compatibility
+**Step 1: Combine 3 bytes into 24-bit value**
+```
+raw_24bit = (b0 << 16) | (b1 << 8) | b2
 
-For complete examples including:
-- Full UDP receiver with keep-alive
-- Real-time plotting GUI
-- Data recording and playback
-- Filtering and processing
+Example: b0=0x80, b1=0x00, b2=0x00
+         10000000 00000000 00000000  = 0x800000 (bit 23 is set = negative)
+         ↑
+         Sign bit (bit 23)
+```
 
-Check the `python/` folder in the repository which contains a complete working application with GUI and all parsing logic.
+**Step 2: Sign Extension (24-bit → 32-bit)**
+```
+Method: Shift left by 8, then arithmetic shift right by 8
+
+Original 24-bit:  ???????? 10000000 00000000 00000000  (? = undefined)
+                           ↑ bit 23 (sign)
+
+After << 8:       10000000 00000000 00000000 ????????  (sign now at bit 31)
+                  ↑ bit 31 (sign position in int32)
+
+After >> 8:       11111111 10000000 00000000 00000000  (sign extended)
+                  ↑ sign bits filled in
+
+Result: -8,388,608 (proper negative int32)
+```
+
+**Quick Reference**
+```python
+# Parse one 24-bit sample (Python)
+def parse_24bit_sample(b0, b1, b2):
+    # Step 1: Combine bytes (big-endian)
+    raw_24bit = (b0 << 16) | (b1 << 8) | b2
+    
+    # Step 2: Sign extend if negative
+    if raw_24bit & 0x800000:  # Check bit 23
+        raw_24bit |= 0xFF000000  # Set upper 8 bits
+        # Convert unsigned to signed
+        import struct
+        raw_24bit = struct.unpack('>i', struct.pack('>I', raw_24bit))[0]
+    
+    return float(raw_24bit)
+```
+
+For complete UDP datagram parsing including frame validation and battery extraction, see the `python/` folder which contains full working examples.
 
 ### Data Conversion Reference
 
@@ -319,16 +259,21 @@ The ADS1299 outputs 24-bit signed values. To convert to physical units:
 ```
 Raw ADC value → Voltage conversion:
 - LSB size = 4.5V / (2^23) = 0.536 microvolts per count
-- Voltage = raw_value * 0.536 µV (at gain=1)
+- Voltage = raw_value * 0.536 µV (at hardware gain=1)
+```
 
-For other gains, divide by the gain setting:
-- Gain 1:  ±4.5V range
-- Gain 2:  ±2.25V range  
-- Gain 4:  ±1.125V range
-- Gain 6:  ±750mV range
-- Gain 8:  ±562.5mV range
-- Gain 12: ±375mV range
-- Gain 24: ±187.5mV range
+**Digital Gain Note**: 
+This board uses digital gain (bit shifting) which reduces the maximum voltage range before the signal saturates the 24-bit output:
+
+```
+Digital Gain Settings and Maximum Input Range:
+- Gain 1:  ±4.5V  (full ADC range)
+- Gain 2:  ±2.25V (saturates at ±2.25V)
+- Gain 4:  ±1.125V (saturates at ±1.125V)
+- Gain 8:  ±562.5mV (saturates at ±562.5mV)
+- Gain 16: ±281.25mV (saturates at ±281.25mV)
+
+Example: With digital gain=8, a ±600mV signal will clip/overflow
 ```
 
 **Important Notes**:
@@ -395,17 +340,10 @@ apply
 - **Channels**: 16 differential inputs
 - **Sampling Rates**: 250, 500, 1000, 2000, 4000 Hz
 - **Resolution**: 24-bit (0.536 μV/bit at gain=1)
-- **Input Range**: ±4.5V (before gain)
-- **Voltage Range by Gain**:
-  - Gain 1: ±4.5V
-  - Gain 2: ±2.25V
-  - Gain 4: ±1.125V
-  - Gain 6: ±750mV
-  - Gain 8: ±562.5mV
-  - Gain 12: ±375mV
-  - Gain 24: ±187.5mV
+- **Input Range**: ±4.5V (before digital gain)
+- **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (reduces max input before saturation)
 - **Input Impedance**: 10 GΩ
-- **Noise**: <1 μVpp (0.01-70 Hz, gain=24)
+- **Noise**: <1 μVpp (0.01-70 Hz, typical)
 - **CMRR**: -110 dB
 
 ### Performance
