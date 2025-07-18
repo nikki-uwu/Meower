@@ -4,22 +4,27 @@
 
 A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals with research-grade quality. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi at up to 4000 Hz - just power on, connect, and start recording.
 
+## 2. ⚠️ Safety Information
+
+**WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment.
+
+### Performance & Noise Considerations
+**For lowest noise and best performance, use battery power only!** Even from a pure performance standpoint, battery operation is essential - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. Always disconnect USB after configuration for research-quality recordings.
+
 ## 📚 What's in This Guide
 
 | Section | Description |
 |---------|-------------|
-| **1. ⚡ Quick Start** | Get data flowing in under 10 minutes |
-| **2. 🔧 Building From Source** | Compile and upload custom firmware |
-| **3. 📊 Data Format** | Channel mapping and packet structure |
-| **4. 🎛️ Configuration** | Commands and settings |
-| **5. 📈 Specifications** | Technical details and performance |
-| **6. 🛠️ Troubleshooting** | Common issues and solutions |
-| **7. 🔌 Software Integration** | Code examples and compatible apps |
-| **8. ⚠️ Safety** | Important usage guidelines |
-| **9. 🤝 Community** | Getting help and contributing |
-| **10. 📄 License** | Usage rights and credits |
+| **1. 🧠 Project Overview** | What this board is and does |
+| **2. ⚠️ Safety Information** | Critical safety and performance guidelines |
+| **3. ⚡ Quick Start** | Get data flowing in under 10 minutes |
+| **4. 🔧 Building From Source** | Compile and upload custom firmware |
+| **5. 📊 Data Format** | Channel mapping and packet structure |
+| **6. 🎛️ Configuration** | Commands and settings |
+| **7. 📈 Specifications** | Technical details and performance |
+| **8. 🛠️ Troubleshooting** | Common issues and solutions |
 
-## 1. ⚡ Quick Start
+## 3. ⚡ Quick Start
 
 ### What You'll Need
 - Meower board (this board)
@@ -74,7 +79,7 @@ After configuration, the LED shows board status:
 - **1 blink every 5 seconds**: Streaming data
 - **5 blinks**: [To be confirmed - possibly error state]
 
-## 2. 🔧 Building From Source
+## 4. 🔧 Building From Source
 
 ### Prerequisites
 | Software | Version | Download |
@@ -108,27 +113,25 @@ After configuration, the LED shows board status:
 - **CH340 drivers**: ESP32-C3 has built-in USB - no drivers needed! (Unlike older ESP32)
 - If still having issues, try a different USB cable or port
 
-## 3. 📊 Data Format & Channel Mapping
+## 5. 📊 Data Format & Channel Mapping
 
 ### Channel Numbering
-```
-┌─────────────────────────────────┐
-│         CHANNEL MAP             │
-├─────────────────────────────────┤
-│ Ch 0-7:  Master ADS1299 (U1)    │
-│ Ch 8-15: Slave ADS1299 (U2)     │
-│                                 │
-│ Standard 10-20 Mapping:         │
-│ Ch0 → Fp1    Ch8  → Fp2         │
-│ Ch1 → F3     Ch9  → F4          │
-│ Ch2 → C3     Ch10 → C4          │
-│ Ch3 → P3     Ch11 → P4          │
-│ Ch4 → O1     Ch12 → O2          │
-│ Ch5 → F7     Ch13 → F8          │
-│ Ch6 → T3     Ch14 → T4          │
-│ Ch7 → T5     Ch15 → T6          │
-└─────────────────────────────────┘
-```
+
+[Channel mapping diagram - to be added]
+
+**Channel Assignment:**
+- Channels 0-7: Master ADS1299 (U1)
+- Channels 8-15: Slave ADS1299 (U2)
+
+**Standard 10-20 System Mapping:**
+- Ch0 → Fp1, Ch8 → Fp2
+- Ch1 → F3, Ch9 → F4
+- Ch2 → C3, Ch10 → C4
+- Ch3 → P3, Ch11 → P4
+- Ch4 → O1, Ch12 → O2
+- Ch5 → F7, Ch13 → F8
+- Ch6 → T3, Ch14 → T4
+- Ch7 → T5, Ch15 → T6
 
 ### UDP Packet Structure
 
@@ -282,13 +285,13 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 - Timestamp increments every 8 microseconds
 - Battery voltage is standard IEEE 754 32-bit float
 
-## 4. 🎛️ Configuration & Control
+## 6. 🎛️ Configuration & Control
 
 ### Network Ports & Communication
-- **Control Port**: 5000 (UDP) - Commands and configuration
-- **Data Port**: 5001 (UDP) - EEG data stream
-- **Keep-Alive**: Board requires "floof" message every 5 seconds or stops streaming after ~100s
-- **Auto-Discovery**: Board sends beacons to control port when not connected
+- **Control Port**: 5000 (UDP) - Commands and configuration (default, configurable)
+- **Data Port**: 5001 (UDP) - EEG data stream (default, configurable)
+- **Keep-Alive**: Board requires "floof" message every 5 seconds or stops streaming after ~10s
+- **Auto-Discovery**: Board sends beacons on control port when not connected, allowing PC to grab board's IP address
 
 ### Command Reference
 Send these commands to the control port as UTF-8 strings:
@@ -297,42 +300,52 @@ Send these commands to the control port as UTF-8 strings:
 |---------|-------------|---------|
 | `sys start_cnt` | Start continuous streaming | Begin data acquisition |
 | `sys stop_cnt` | Stop continuous streaming | Halt data acquisition |
-| `sys adc_reset` | Reset ADS1299 chips | Full hardware reset |
-| `sys esp_reboot` | Reboot ESP32 | Soft restart |
-| `sys filters_on` | Enable all filters | Activate DSP |
-| `sys filters_off` | Disable all filters | Raw data only |
-| `sys filter_dc_on` | Enable DC blocking | Remove DC offset |
-| `sys filter_5060_on` | Enable 50/60Hz notch | Remove mains noise |
-| `sys digitalgain [1-256]` | Set digital gain | `sys digitalgain 8` |
-| `sys networkfreq [50\|60]` | Set mains frequency | `sys networkfreq 60` |
-| `sys dccutofffreq [0.5\|1\|2\|4\|8]` | DC filter cutoff | `sys dccutofffreq 1` |
+| `sys adc_reset` | Full ADS1299 hardware reset + sync | Resets both ADCs to synced state |
+| `sys esp_reboot` | Full hardware reboot (ESP32 + ADCs) | Complete system restart |
+| `sys erase_flash` | Erase WiFi credentials | Force setup mode on next boot |
+| **Filter Master Controls** | | |
+| `sys filters_on` | Enable ALL filters | Master filter switch ON |
+| `sys filters_off` | Disable ALL filters | Master filter switch OFF |
+| **Individual Filter Controls** | | |
+| `sys filter_equalizer_on` | Enable FIR equalizer | Compensate ADC frequency response |
+| `sys filter_equalizer_off` | Disable FIR equalizer | Raw ADC response |
+| `sys filter_dc_on` | Enable DC blocking filter | Remove DC offset |
+| `sys filter_dc_off` | Disable DC blocking filter | Keep DC component |
+| `sys filter_5060_on` | Enable 50/60Hz notch | Remove mains interference |
+| `sys filter_5060_off` | Disable 50/60Hz notch | No mains filtering |
+| `sys filter_100120_on` | Enable 100/120Hz notch | Remove mains harmonics |
+| `sys filter_100120_off` | Disable 100/120Hz notch | No harmonic filtering |
+| **Filter Settings** | | |
+| `sys networkfreq [50\|60]` | Set mains frequency | `sys networkfreq 60` (US/Americas) |
+| `sys dccutofffreq [0.5\|1\|2\|4\|8]` | DC filter cutoff (Hz) | `sys dccutofffreq 0.5` |
+| `sys digitalgain [1-256]` | Set digital gain (power of 2) | `sys digitalgain 8` |
+| **Advanced/Debug Commands** | | |
+| `spi M\|S\|B <len> <bytes...>` | Direct SPI communication | `spi M 3 0x20 0x00 0x00` |
+
+**Notes**: 
+- `adc_reset`: Performs full ADS1299 initialization and syncs master/slave timing
+- `esp_reboot`: Complete system restart including all hardware
+- Filters must be enabled with both master switch (`filters_on`) AND individual filter switches
+- SPI commands: M=Master ADC, S=Slave ADC, B=Both ADCs
 
 ### Reset to Setup Mode
-Need to reconfigure WiFi? Toggle power:
-1. Turn OFF
-2. Turn ON 
-3. Turn OFF
-4. Turn ON
-5. Turn OFF
-6. Turn ON
+Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enters setup mode:
 
-All within 5 seconds. Board will create `EEG-SETUP` hotspot again.
+1. Turn ON briefly
+2. Turn OFF
+3. Turn ON briefly  
+4. Turn OFF
+5. Turn ON briefly
+6. Turn OFF
+7. Turn ON → Board creates `EEG-SETUP` hotspot
 
-### Serial Configuration (Backup)
-Connect at 115200 baud:
-```
-set ssid YourWiFiName
-set pass YourWiFiPassword  
-set ip 192.168.1.100
-set port_ctrl 5000
-set port_data 5001
-show
-apply
-```
+**Important timing details**:
+- Board counts cumulative ON time (must be <5 seconds total)
+- OFF time doesn't matter - take as long as you need
+- Example: ON for 1s → OFF for 30s → ON for 1s → OFF for 2 minutes → ON for 1s → OFF → ON = Reset!
+- The board recognizes reset reason - other resets (USB, button, watchdog) won't trigger setup mode
 
-**Note**: Password is visible in serial output. Use for debugging only.
-
-## 5. 📈 Specifications
+## 7. 📈 Specifications
 
 ### Hardware
 - **Microcontroller**: ESP32-C3 (RISC-V, 160MHz, WiFi 2.4GHz)
@@ -342,24 +355,20 @@ apply
 - **Resolution**: 24-bit (0.536 μV/bit at gain=1)
 - **Input Range**: ±4.5V (before digital gain)
 - **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (reduces max input before saturation)
-- **Input Impedance**: 10 GΩ
-- **Noise**: <1 μVpp (0.01-70 Hz, typical)
-- **CMRR**: -110 dB
 
 ### Performance
-- **Power Consumption**: ~400mW (streaming at 250Hz)
+- **Power Consumption**: ~400mW (typical during streaming)
 - **Battery Life**: 10+ hours with 1100mAh LiPo
 - **WiFi Range**: 30m typical indoor
 - **Network Latency**: <10ms typical
-- **Maximum Data Rate**: ~1.5 Mbps at 4000Hz
 
-## 6. 🛠️ Troubleshooting
+## 8. 🛠️ Troubleshooting
 
 ### Board Not Detected
 1. Check USB cable (must support data, not charge-only)
-2. Install CH340 drivers if needed
-3. Try different USB port
-4. Check Device Manager (Windows) or `ls /dev/tty*` (Linux/Mac)
+2. Try different USB port
+3. Check Device Manager (Windows) or `ls /dev/tty*` (Linux/Mac)
+4. ESP32-C3 has built-in USB - no drivers needed!
 
 ### Can't Connect to WiFi
 1. Ensure 2.4GHz network (5GHz not supported)
@@ -383,137 +392,6 @@ apply
 5. Check ground and reference electrode placement
 6. Move away from AC power sources
 7. Ensure battery powered during use
-
-## 7. 🔌 Software Integration
-
-### Python Quick Start
-```python
-import socket
-import struct
-import time
-
-# Setup
-BOARD_IP = "192.168.1.100"  # Your board's IP (or use auto-discovery)
-PC_IP = "0.0.0.0"           # Listen on all interfaces
-
-# Create sockets
-data_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-data_sock.bind((PC_IP, 5001))
-data_sock.settimeout(1.0)  # 1 second timeout
-
-ctrl_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Start streaming
-ctrl_sock.sendto(b"sys start_cnt", (BOARD_IP, 5000))
-
-# Keep-alive thread (required!)
-def send_keepalive():
-    while True:
-        ctrl_sock.sendto(b"floof", (BOARD_IP, 5000))
-        time.sleep(5)
-
-import threading
-keepalive_thread = threading.Thread(target=send_keepalive, daemon=True)
-keepalive_thread.start()
-
-# Parse function (matches C implementation)
-def parse_24bit_to_float(b0, b1, b2):
-    """Convert 3 bytes (big-endian) to signed float"""
-    raw = (b0 << 16) | (b1 << 8) | b2
-    if raw & 0x800000:  # Check sign bit
-        raw |= 0xFF000000  # Sign extend
-        raw = struct.unpack('>i', struct.pack('>I', raw))[0]
-    return float(raw)
-
-# Receive data
-while True:
-    try:
-        # Read complete datagram (up to 1500 bytes)
-        data, addr = data_sock.recvfrom(1500)
-        
-        # Calculate frames (packet size - battery) / frame size
-        num_frames = (len(data) - 4) // 52
-        
-        # Extract battery (last 4 bytes)
-        battery = struct.unpack('<f', data[-4:])[0]
-        
-        # Process each frame
-        for i in range(num_frames):
-            frame_start = i * 52
-            
-            # Parse first channel as example
-            ch0_raw = parse_24bit_to_float(
-                data[frame_start], 
-                data[frame_start + 1], 
-                data[frame_start + 2]
-            )
-            
-            # Get timestamp (little-endian, 8µs units)
-            ts = struct.unpack('<I', data[frame_start + 48:frame_start + 52])[0]
-            
-            # Convert to physical units if needed
-            ch0_uV = ch0_raw * 0.536  # At gain=1
-            ts_ms = ts * 0.008  # Convert to milliseconds
-            
-            print(f"Time: {ts_ms:.1f}ms, Ch0: {ch0_uV:.2f}µV, Battery: {battery:.2f}V")
-            
-    except socket.timeout:
-        continue
-```
-
-### Compatible Software
-- **BrainFlow**: Full support with auto-discovery
-  ```python
-  # Auto-discovery example
-  params = BrainFlowInputParams()
-  # params.ip_address = ""  # Leave empty for auto-discovery!
-  params.ip_port = 5001
-  params.ip_port_aux = 5000
-  params.other_info = "discovery_timeout=5000"  # Optional: 5s timeout
-  
-  board = BoardShim(BoardIds.VRCHAT_BOARD, params)
-  board.prepare_session()  # Will find board automatically
-  ```
-- **OpenViBE**: Use Acquisition Server with custom driver
-- **LabStreamingLayer**: Python script included for LSL streaming
-- **MATLAB**: UDP receiver examples provided
-- **Processing/P5.js**: Real-time visualization examples
-
-## 8. ⚠️ Safety Information
-
-> **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment.
-
-### Electrical Safety
-- Only use battery power when connected to body
-- Device provides WiFi isolation from mains power
-- Current limited design (<10μA fault current)
-- CE/FCC compliance pending
-
-### Best Practices
-- Always use proper EEG gel or saline
-- Clean electrode sites with 70% alcohol
-- Check impedances before recording
-- Take breaks during long sessions
-- Stop if skin irritation occurs
-
-## 9. 🤝 Community & Support
-
-### Getting Help
-- **GitHub Issues**: Bug reports and feature requests
-- **Discord**: [Join our community]
-- **Email**: support@[yourdomain].com
-
-### Contributing
-- Hardware improvements welcome (KiCad files included)
-- Firmware contributions via pull request
-- Documentation improvements always needed
-- Share your projects and use cases!
-
-## 10. 📄 License
-
-- **Hardware**: CERN Open Hardware License v2
-- **Firmware**: MIT License
-- **Documentation**: CC BY-SA 4.0
 
 ---
 
