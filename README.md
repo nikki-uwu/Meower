@@ -1,5 +1,6 @@
 # ESP32-C3 16-Channel WiFi EEG/BCI Board
 ![IMG_6576](https://github.com/user-attachments/assets/73e6875a-6617-4883-9c06-8b8a87192fb5)
+*(for anyone who would think i removed markings - no :3, that's just the angle, laziness, low light and iphone 12 :3)*
 ## 🧠 Project Overview
 
 A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals with research-grade quality. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi at up to 4000 Hz - just power on, connect, and start recording.
