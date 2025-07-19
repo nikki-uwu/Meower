@@ -37,30 +37,27 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 - 2.4GHz WiFi network (or use serial configuration)
 - No drivers needed - ESP32-C3 has built-in USB!
 
-**Note**: Board IP can be auto-discovered - no need to know it in advance!
-
 ### Configure WiFi Settings (Choose One Method)
 
-#### Method 1: WiFi Access Point with Auto-Discovery
-1. **Power on** - Board broadcasts UDP beacons
+#### Method 1: WiFi Access Point
+1. **Power on** the board
 2. **Connect to WiFi hotspot**: `EEG-SETUP` (password: `password`)
 3. **Open browser**: Navigate to `http://192.168.4.1`
 4. **Enter your settings**:
    - WiFi network name (SSID)
    - WiFi password
-   - Your PC's IP address (or leave empty for auto-discovery)
-   - Ports (default: 5000 control, 5001 data)
+   - Control port (default: 5000)
+   - Data port (default: 5001)
 5. **Click "Save and Restart"**
 
-**Auto-Discovery**: If you don't specify board IP in your software, it will automatically find the board via UDP beacons on port 5000 (wait up to 3 seconds by default).
+The board will automatically discover your PC through UDP broadcast messages - no IP configuration needed.
 
-#### Method 2: Serial Configuration (More Control)
+#### Method 2: Serial Configuration
 1. **Connect via USB** and open serial terminal (115200 baud)
 2. **Type commands**:
    ```
    set ssid YourWiFiName
    set pass YourWiFiPassword  
-   set ip [Your PC's IP address]
    set port_ctrl 5000
    set port_data 5001
    show
@@ -306,8 +303,17 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 ### Network Ports & Communication
 - **Control Port**: 5000 (UDP) - Commands and configuration (default, configurable)
 - **Data Port**: 5001 (UDP) - EEG data stream (default, configurable)
-- **Keep-Alive**: Board requires "floof" message every 5 seconds or stops streaming after ~10s
-- **Auto-Discovery**: Board sends beacons on control port when not connected, allowing PC to grab board's IP address
+- **Keep-Alive**: Send "floof" message every 10 seconds to maintain connection
+- **Connection Timeout**: Board stops streaming after ~10 seconds without any packets
+
+### Discovery & Connection Flow
+
+1. **Board powers on** → Connects to configured WiFi network
+2. **Broadcasts "MEOW_MEOW"** on UDP port 5000 every second
+3. **PC software listens** on port 5000 and responds with "WOOF_WOOF"
+4. **Board captures PC's IP** from the WOOF_WOOF packet source
+5. **Ready to stream** → Send `sys start_cnt` to begin
+6. **Maintain connection** → PC sends "floof" keepalive every <10 seconds
 
 ### Command Reference
 Send these commands to the control port as UTF-8 strings:
@@ -509,8 +515,8 @@ spi M 3 0x45 0x07 0x00
 5. Check serial output for error messages
 
 ### No Data Received
-1. Verify PC firewall allows UDP port 5001
-2. Check PC IP matches board configuration
+1. Verify PC firewall allows UDP ports 5000 and 5001
+2. Ensure your software responds to MEOW_MEOW with WOOF_WOOF
 3. Send `sys start_cnt` command to begin streaming
 4. Confirm LED shows streaming pattern (1 blink/5s)
 5. Try simple UDP listener to test connectivity
