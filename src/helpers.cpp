@@ -6,7 +6,7 @@ extern volatile uint32_t g_selectSamplingFreq;
 extern volatile bool continuousReading;
 
 // Setting start signal for contious mode. Ether ON or OFF
-void continious_mode_start_stop(uint8_t on_off)
+void continuous_mode_start_stop(uint8_t on_off)
 {
     if (on_off == HIGH) // Start continuous mode
     {
@@ -14,7 +14,7 @@ void continious_mode_start_stop(uint8_t on_off)
         spiTransaction_OFF();
         spiTransaction_ON(SPI_COMMAND_CLOCK);
 
-        // Before any start of the continious we must check board Sample Rate
+        // Before any start of the continuous we must check board Sample Rate
         // which is at Config 1 which is to read is 0x21
         uint8_t tx_mex[3] = {0x21, 0x00, 0x00};
         uint8_t rx_mes[3] = {0};
@@ -164,7 +164,7 @@ void ads1299_full_reset()
     // We will use digitalWrite instead of WRITE_PERI_REG here since timings are not important.
 
     // Make sure continuous Mode is OFF, because we are doing full reset
-    continious_mode_start_stop(LOW);
+    continuous_mode_start_stop(LOW);
 
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
     spiTransaction_OFF();                 // stop SPI
@@ -298,7 +298,7 @@ void ads1299_full_reset()
 void BCI_preset()
 {
     // Make sure continuous Mode is OFF, because we are doing full reset
-    continious_mode_start_stop(LOW);
+    continuous_mode_start_stop(LOW);
 
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
     spiTransaction_OFF();                 // stop SPI
@@ -349,7 +349,7 @@ void BCI_preset()
 void wait_until_ads1299_is_ready()
 {
    // Make sure continuous mode is OFF before checking ID - do this once outside loop
-   continious_mode_start_stop(LOW);
+   continuous_mode_start_stop(LOW);
 
    // Safe SPI transaction (2 MHz for config)
    spiTransaction_OFF();                 // stop SPI

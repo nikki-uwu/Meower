@@ -519,12 +519,11 @@ void setup()
 
     // Right at the end we have to reset ADC so it's at default state.
     wait_until_ads1299_is_ready();
-    ads1299_full_reset();
+    ads1299_full_reset(); // Signal will be square wave with 1s period
     if (BCI_MODE) { BCI_preset(); } // Set normal BCI mode
 
     // Start ADC so it tries to send data right away without any other need so config or what ever
-    // Signal will be square wave with 1s period
-    continious_mode_start_stop(HIGH);
+    continuous_mode_start_stop(HIGH);
 
     Debug.log("[BOOT] ssid      : %s", ssid.c_str());
     Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set

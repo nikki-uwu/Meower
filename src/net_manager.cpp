@@ -17,8 +17,12 @@ extern Debugger      Debug;
 // ---------------------------------------------------------------------------------------------------------------------------------
 static NetManager* s_netMgr = nullptr;   // set once in NetManager::begin()
 
-
-constexpr uint8_t boardDiscoveryBeacon = 0x0A;
+// The compiler creates: ['M','E','O','W','_','M','E','O','W','\0']
+// That's 10 bytes total (including null terminator)
+// sizeof(boardDiscoveryBeacon) = 10
+// But you only want to send 9 characters, not the '\0'
+// So: sizeof(boardDiscoveryBeacon) - 1 = 9
+constexpr char boardDiscoveryBeacon[] = "MEOW_MEOW";
 
 
 
@@ -231,7 +235,7 @@ void NetManager::update(void)
     {
         Debug.print("BEACON TX");
         _udp.beginPacket(_remoteIP, _localPortCtrl);
-        _udp.write(&boardDiscoveryBeacon, 1);
+        _udp.write((const uint8_t*) boardDiscoveryBeacon, sizeof(boardDiscoveryBeacon) - 1);
         _udp.endPacket();
         _lastBeaconMs = now;
     }

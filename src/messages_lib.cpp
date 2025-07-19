@@ -29,7 +29,7 @@ extern Debugger Debug;
 // ---------------------------------------------------------------------------------------------------------------------------------
 extern void ads1299_full_reset();
 extern void BCI_preset();
-extern void continious_mode_start_stop(uint8_t on_off);
+extern void continuous_mode_start_stop(uint8_t on_off);
 
 
 
@@ -90,12 +90,12 @@ static void cmd_ADC_RESET(char **)
 }
 static void cmd_START_CONT(char **)
 {
-    continious_mode_start_stop(HIGH);
+    continuous_mode_start_stop(HIGH);
     net.startStream();
 }
 static void cmd_STOP_CONT(char **)
 {
-    continious_mode_start_stop(LOW);
+    continuous_mode_start_stop(LOW);
     Debug.print("CMD stop_cnt - user requested stop");
     net.stopStream();
 }
@@ -443,6 +443,10 @@ void handle_SYS(char **ctx, const char * /*orig*/)
         Preferences prefs;
         prefs.begin("netconf", false); // open writable
         prefs.clear();                 // delete all keys in this namespace
+        prefs.end();
+
+        prefs.begin("bootlog", false);
+        prefs.clear();
         prefs.end();
 
         send_reply_line("OK: flash config erased - rebooting...");

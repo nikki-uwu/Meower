@@ -11,7 +11,7 @@
 #define LED_PERIOD_MS 5000 // repeat every 5000 ms
 
 #define PIN_BAT_SENSE   4 // physical pin 18, GPIO4, ADC1_CH4
-#define BAT_SCALE       0.00123482072238899979173968476499f // Scaling value to bring ADC values to actual battery voltage
+#define BAT_SCALE       0.001235f // Scaling value to bring ADC values to actual battery voltage
 #define BAT_SAMPLING_MS 32 // ms between smapling of battery voltage
 
 // Size of a counter we add at the end of the each ADC frame. It's uint32 so 4 bytes
@@ -30,7 +30,7 @@
 // ms between beacons when you are not connected to anyone
 #define WIFI_BEACON_PERIOD 1000
 
-// Time out for board to say PC was lost, default was 1 minute
+// Time out for board to say PC was lost
 #define WIFI_SERVER_TIMEOUT 10000 // ms
 
 // Give-up time for Wi-Fi reconnect watchdog (2 minutes)
@@ -48,7 +48,10 @@
 #define SERIAL_BAUD  115200
 
 // BCI MODE?
-// IF YES IT WILL SET UP ALL CHANNEL TO BASIC
+// IF YES IT WILL SET UP ALL CHANNEL TO BASIC ON EACH RESET
+// BCI mode means: SRB2 mode (all positive shorted together)
+//                 Bias output is ON
+//                 Fs 250 Hz
 #define BCI_MODE 1
 
 

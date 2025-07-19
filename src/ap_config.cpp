@@ -20,13 +20,18 @@ void handleRoot()
     // Scan Wi-Fi for convenience list
     int n = WiFi.scanNetworks();
     String options;
-    for (int i = 0; i < n; i++)
+    int shown = 0;
+    for (int i = 0; (i < n) && (shown < 15); i++)
     {
         String ssid = WiFi.SSID(i);
-        ssid.replace("\"", "\\\""); // escape quotes
-        options += "<div onclick='selectSSID(\"" + ssid + "\")' "
-                   "style='cursor:pointer;color:blue;text-decoration:underline;'>"
-                   + ssid + "</div>\n";
+        if (ssid.length() > 0)  // Skip empty SSIDs
+        {
+            ssid.replace("\"", "\\\""); // escape quotes
+            options += "<div onclick='selectSSID(\"" + ssid + "\")' "
+                    "style='cursor:pointer;color:blue;text-decoration:underline;'>"
+                    + ssid + "</div>\n";
+            shown++;
+        }
     }
 
     // Read current ports so the form shows real values

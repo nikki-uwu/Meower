@@ -80,7 +80,7 @@ After configuration, the LED shows board status:
 - **3 blinks**: Cannot connect to WiFi
 - **2 blinks**: Connected to WiFi (not streaming)
 - **1 blink every 5 seconds**: Streaming data
-- **5 blinks**: [To be confirmed - possibly error state]
+- **5 blinks**: Connection lost (failsafe triggered)
 
 ## 2. 🔧 Building From Source
 
