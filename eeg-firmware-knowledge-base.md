@@ -10,7 +10,7 @@ This document consolidates ALL technical knowledge, implementation details, and 
 2. **Never exceed 2 MHz SPI during initial configuration** - ADS1299 refuses faster clocks after reset
 3. **Keep ADC sense pin on ADC1 only** - ADC2 conflicts with WiFi and will cause crashes
 4. **Triple-tap power for recovery** - If board acts dead, 3 power cycles < 3s each triggers captive portal
-5. **Send "floof" every ≤5 seconds** - Board drops to IDLE after 10s without keep-alive
+5. **Send "WOOF_WOOF" every ≤10 seconds** - Board drops to IDLE after 10s without keep-alive
 
 ---
 
@@ -60,7 +60,7 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 - **SSID**: `EEG-SETUP`
 - **Password**: `password`  
 - **IP**: `192.168.4.1`
-- **Saves to NVS**: ssid, pass, ip, port_ctrl, port_data
+- **Saves to NVS**: ssid, pass, port_ctrl, port_data
 - **Auto-triggers**: On missing config or boot storm
 
 ### ADS1299 Initialization Sequence
@@ -98,9 +98,9 @@ DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
 ```
 
 ### Discovery & Keep-Alive Protocol
-- **Beacon**: Single byte `0x0A` every 1 second when no peer found
-- **Keep-alive**: "floof" (5 bytes) required every 5 seconds
-- **Any packet** refreshes watchdog, but only "floof" bypasses command queue
+- **Beacon**: "MEOW_MEOW" (9 bytes) every 1 second when no peer found
+- **Discovery/Keep-alive**: "WOOF_WOOF" (9 bytes) serves dual purpose
+- **Any packet** refreshes watchdog, including WOOF_WOOF and commands
 
 ### Timeout Hierarchy
 1. **10s streaming watchdog**: No data → drop STREAMING to IDLE
@@ -118,7 +118,7 @@ DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
 - **TX**: Traditional WiFiUDP for sending
 - **RX**: Event-driven AsyncUDP (zero polling overhead)
 - **Queue**: 8-slot command queue, 512 bytes each
-- **Beacon filter**: Ignores own 0x0A beacons
+- **Beacon filter**: Ignores own MEOW_MEOW beacons
 
 ---
 
@@ -344,7 +344,6 @@ return (now >= then) ? (now - then) : 0;
 
 ### Must Fix
 - **Slave SPI reads** not implemented (daisy-chain complexity)
-- **LED pattern #5** purpose not confirmed
 
 ### Quirks to Remember
 - **WiFi + ADC2** = instant crash (hardware limitation)
@@ -355,18 +354,6 @@ return (now >= then) ? (now - then) : 0;
 ### Debug Features
 - **SERIAL_DEBUG**: Set to 1 in defines.h for verbose output
 - **Test mode 'T'**: Sends SPI clocks without CS for scope
-
----
-
-## 🚨 Suspicious/Inconsistent Findings
-
-1. **Battery scale factor**: The precision (0.00123482072238899979173968476499) seems excessive for a voltage divider. Typical resistor tolerance is 1%.
-
-2. **Comment says "≥100s" timeout** but code uses 10s (10000ms). Big difference in user experience.
-
-3. **5 LED blinks** documented as "possibly error state" but code clearly sets this for "LOST" condition after failsafe.
-
-4. **BCI_MODE flag** in defines.h but no documentation about what changes when enabled.
 
 ---
 
