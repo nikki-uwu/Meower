@@ -5,7 +5,7 @@ UDP Control Channel Manager for DIY EEG Board
 This module handles the control/command channel over UDP:
 - Auto-discovery of board IP via beacon
 - Bidirectional command/response communication
-- Periodic keep-alive ("floof") messages
+- Periodic keep-alive ("WOOF_WOOF") messages
 - Thread-safe operation with queues
 
 Note: This is separate from the high-speed data channel (port 5001)
@@ -26,13 +26,13 @@ class UDPManager:
     1. Board sends a beacon packet to announce its presence
     2. Manager locks onto board's IP address
     3. Bidirectional command/response communication begins
-    4. Periodic "floof" keep-alive maintains connection
+    4. Periodic "WOOF_WOOF" keep-alive maintains connection
     
     Thread-safe: All communication goes through queues.
     """
     
     # ────────── Configuration Constants ──────────
-    FLOOF_INTERVAL = 5.0    # Keep-alive interval in seconds
+    WOOF_WOOF_INTERVAL = 5.0    # Keep-alive interval in seconds
     SOCKET_TIMEOUT = 0.050  # 50ms - balance between CPU and responsiveness
     RECV_BUFFER_SIZE = 512  # Max size for control messages
     MAX_TX_PER_CYCLE = 20   # Process up to N TX messages per loop
@@ -143,7 +143,7 @@ class UDPManager:
         sock.settimeout(self.SOCKET_TIMEOUT)
         
         # Initialize keep-alive timer
-        next_floof = time.time() + self.FLOOF_INTERVAL
+        next_WOOF_WOOF = time.time() + self.WOOF_WOOF_INTERVAL
         
         # Log startup
         self.rx_q.put(f"[PC] UDP listening on *:{self.ctrl_port}\n")
@@ -217,17 +217,17 @@ class UDPManager:
                     self.rx_q.put(f"[PC] Failed to send: {e}\n")
                     break
 
-            # ─────── 3) Keep-Alive ("floof") ───────
+            # ─────── 3) Keep-Alive ("WOOF_WOOF") ───────
             now = time.time()
-            if self.board_ip and now >= next_floof:
+            if self.board_ip and now >= next_WOOF_WOOF:
                 try:
                     # Send keep-alive
                     if self.tx_hook:
-                        self.tx_hook("floof")
-                    sock.sendto(b"floof", (self.board_ip, self.ctrl_port))
+                        self.tx_hook("WOOF_WOOF")
+                    sock.sendto(b"WOOF_WOOF", (self.board_ip, self.ctrl_port))
                     
                     # Schedule next keep-alive
-                    next_floof = now + self.FLOOF_INTERVAL
+                    next_WOOF_WOOF = now + self.WOOF_WOOF_INTERVAL
                     
                 except socket.error:
                     # Keep-alive failed - board might be down

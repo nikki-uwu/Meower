@@ -269,7 +269,7 @@ def main():
     print("ESP32's IP is", ESP_IP)
     ctrl_sock.sendto(b"sys adc_reset ", (ESP_IP, CTRL_PORT))
 
-    ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
+    ctrl_sock.sendto(b'WOOF_WOOF', (ESP_IP, CTRL_PORT))
     # flush_udp_buffer(ctrl_sock)
     # for reg in (0x20, 0x23):
     #     cmd = f"spi M 3 0x{reg:02X} 0x00 0x00 "
@@ -311,7 +311,7 @@ def main():
     # data, _ = ctrl_sock.recvfrom(256)
     # print("RX <", ' '.join(f'{b:02x}' for b in data))
 
-    ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
+    ctrl_sock.sendto(b'WOOF_WOOF', (ESP_IP, CTRL_PORT))
 
     # Start continuous streaming
     ctrl_sock.sendto(b"sys start_cnt ", (ESP_IP, CTRL_PORT))
@@ -839,7 +839,7 @@ def main():
             now = time.time()
             if (now - prev_time) > 0.005:
                 #print(f"[PY] Sending floof at {now:.2f}")
-                ctrl_sock.sendto(b'floof', (ESP_IP, CTRL_PORT))
+                ctrl_sock.sendto(b'WOOF_WOOF', (ESP_IP, CTRL_PORT))
                 #ctrl_sock.sendto(b'sys erase_flash', (ESP_IP, CTRL_PORT))
                 prev_time = now
             root.update_idletasks()
