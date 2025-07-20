@@ -468,7 +468,7 @@ void setup()
     // - One 28-frame packet @500 SPS = 56 ms.
     // - 5 slots -> 280 ms breathing room before the ADC task must wait.
     //
-    // Typical brief Wi-Fi stall or “floof-storm”:
+    // Typical brief Wi-Fi stall or “woof-storm”:
     //   1) UDP task copies packet from slot 0 (queue locked while copying).
     //   2) Lock releases -> higher-priority ADC pre-empts and refills slot 0.
     //   3) If the stall persists, ADC writes the next packet into slot 1, 2, 3, 4.

@@ -50,7 +50,7 @@ void SerialCli::update()
         else
         {
             // input longer than 127 B – discard until newline to resync
-            ser.println("\nERR: Input too long (max 127 chars)");
+            _ser.println("\nERR: Input too long (max 127 chars)");
             while (_ser.available() && _ser.read() != '\n') {}
         }
     }

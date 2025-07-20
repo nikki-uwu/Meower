@@ -17,6 +17,18 @@
 // Class
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
+// NetManager - Handles all network communication with automatic peer discovery
+// 
+// Discovery Protocol:
+// 1. ESP32 broadcasts "MEOW_MEOW" on UDP:5000 every second when no peer found
+// 2. PC responds with "WOOF_WOOF" packet
+// 3. ESP32 extracts PC's IP from the packet source
+// 4. Connection established - no manual IP configuration needed
+//
+// The system also handles:
+// - Keep-alive packets ("woof woof" every <10s from PC)
+// - Automatic reconnection on WiFi drops
+// - State management (DISCONNECTED -> IDLE -> STREAMING)
 class NetManager
 {
 public:
