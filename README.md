@@ -303,7 +303,7 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 ### Network Ports & Communication
 - **Control Port**: 5000 (UDP) - Commands and configuration (default, configurable)
 - **Data Port**: 5001 (UDP) - EEG data stream (default, configurable)
-- **Keep-Alive**: Send "floof" message every 10 seconds to maintain connection
+- **Keep-Alive**: PC sends "WOOF_WOOF" every <10 seconds to maintain connection
 - **Connection Timeout**: Board stops streaming after ~10 seconds without any packets
 
 ### Discovery & Connection Flow
@@ -313,7 +313,7 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 3. **PC software listens** on port 5000 and responds with "WOOF_WOOF"
 4. **Board captures PC's IP** from the WOOF_WOOF packet source
 5. **Ready to stream** → Send `sys start_cnt` to begin
-6. **Maintain connection** → PC sends "floof" keepalive every <10 seconds
+6. **Maintain connection** → PC sends "WOOF_WOOF" keepalive every <10 seconds
 
 ### Command Reference
 Send these commands to the control port as UTF-8 strings:

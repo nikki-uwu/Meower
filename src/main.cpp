@@ -340,7 +340,8 @@ void setup()
     // Start AP mode if we hard switch reset or no wifi data present
     maybeEnterAPMode();
 
-    // If settings are found - pull everything from memory and setup board
+    // If settings are found - pull WiFi credentials and ports from memory
+    // PC IP will be auto-discovered via MEOW_MEOW/WOOF_WOOF beacon exchange
     Preferences prefs;
     bool netconf_ok = prefs.begin("netconf", true);  // try read-only
 
@@ -353,7 +354,6 @@ void setup()
         {
             prefs.putString("ssid"     , "");
             prefs.putString("pass"     , "");
-            prefs.putString("ip"       , "");
             prefs.putUShort("port_ctrl", 0 );
             prefs.putUShort("port_data", 0 );
             prefs.end();  // close after write
@@ -370,7 +370,6 @@ void setup()
     // NOW: safely read all values
     String   ssid      = prefs.getString("ssid", "");
     String   pass      = prefs.getString("pass", "");
-    String   ip        = prefs.getString("ip", "");
     uint16_t port_ctrl = prefs.getUShort("port_ctrl");
     uint16_t port_data = prefs.getUShort("port_data");
 
@@ -391,8 +390,8 @@ void setup()
 
 
     // Configure Wi-Fi using saved credentials and ports
-    net.begin(ssid.c_str(), pass.c_str(), ip.c_str(), port_ctrl, port_data);
-    net.setTargetIP(ip);
+    // PC IP will be auto-discovered when PC responds with WOOF_WOOF to our MEOW_MEOW beacon
+    net.begin(ssid.c_str(), pass.c_str(), port_ctrl, port_data);
 
     // CONFIGURE SPI PINS
     pinMode(PIN_SCLK     , OUTPUT);
@@ -442,9 +441,8 @@ void setup()
     esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // deepest power-save level while connected
 
     // hand sockets to the message parser
-    msgCtx.udp              = net.udp();   // raw WiFiUDP
+    msgCtx.udp              = net.udp(); // raw WiFiUDP
     msgCtx.spi              = &spi;
-    msgCtx.udp_ip           = ip.c_str();
     msgCtx.udp_port_pc_ctrl = port_ctrl;
     msg_init(&msgCtx);
 
@@ -522,12 +520,9 @@ void setup()
     ads1299_full_reset(); // Signal will be square wave with 1s period
     if (BCI_MODE) { BCI_preset(); } // Set normal BCI mode
 
-    // Start ADC so it tries to send data right away without any other need so config or what ever
-    continuous_mode_start_stop(HIGH);
-
     Debug.log("[BOOT] ssid      : %s", ssid.c_str());
     Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
-    Debug.log("[BOOT] PC ip     : %s", ip.c_str());
+    Debug.log("[BOOT] PC ip     : auto-discover via WOOF_WOOF");
     Debug.log("[BOOT] board ip  : %s", net.getLocalIP().toString().c_str());
     Debug.log("[BOOT] port_ctrl : %u", port_ctrl);
     Debug.log("[BOOT] port_data : %u", port_data);

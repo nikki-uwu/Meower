@@ -270,7 +270,6 @@ struct NetSettings
 {
     String     ssid;
     String     password;
-    IPAddress  ip;
     uint16_t   portCtrl = UDP_PORT_CTRL;
     uint16_t   portData = UDP_PORT_PC_DATA;
 };
@@ -287,7 +286,6 @@ public:
     void set(const NetSettings &n)    { s_          = n; }
     void setSSID(const String &v)     { s_.ssid     = v; }
     void setPassword(const String &v) { s_.password = v; }
-    void setIP(const IPAddress &v)    { s_.ip       = v; }
     void setPortCtrl(uint16_t v)      { s_.portCtrl = v; }
     void setPortData(uint16_t v)      { s_.portData = v; }
 

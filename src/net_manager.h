@@ -23,7 +23,6 @@ public:
     // Call once from setup().
     void begin(const char* ssid,
                const char* pass,
-               const char* ip,
                uint16_t    localPortCtrl,
                uint16_t    remotePortData);
 
@@ -36,9 +35,6 @@ public:
 
     // True after at least one valid packet arrived from the PC.
     bool peerFound(void) const { return _peerFound; }
-
-    // Pull IP adress from the memory
-    void setTargetIP(const String& ipStr);
 
     // Give direct socket pointer to code that still needs it (message_lib).
     WiFiUDP* udp() { return &_udp; }
@@ -80,7 +76,7 @@ public:
 
 private:
     WiFiUDP   _udp;
-    IPAddress _remoteIP;             // filled in begin() with fromString()
+    IPAddress _remoteIP;             // auto-discovered via WOOF_WOOF beacon
     IPAddress _localIP{INADDR_NONE}; // our own STA IP
     uint16_t  _localPortCtrl;        // port we listen for commands on (was _localPort)
     uint16_t  _remotePortData;       // port we send fast data to

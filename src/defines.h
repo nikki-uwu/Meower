@@ -1,5 +1,9 @@
 #pragma once // stop the multiple-definition storm
 
+// Network Configuration:
+// - UDP_PORT_PC_DATA: Port for high-speed EEG data streaming
+// - UDP_PORT_CTRL: Port for command/control and autodiscovery beacons
+// - PC IP: Automatically discovered via MEOW_MEOW/WOOF_WOOF handshake
 #define UDP_PORT_PC_DATA 5001 // EEG/data stream (fast data)
 #define UDP_PORT_CTRL    5000 // Command/control
 
@@ -36,9 +40,9 @@
 // Give-up time for Wi-Fi reconnect watchdog (2 minutes)
 #define WIFI_RECONNECT_GIVEUP_MS 60000 // ms
 
-// PC must send it every < 60 s
-#define WIFI_KEEPALIVE_WORD "floof"
-#define WIFI_KEEPALIVE_WORD_LEN 5
+// PC must send WOOF_WOOF for discovery and keepalive (every < 10 s)
+#define WIFI_KEEPALIVE_WORD "WOOF_WOOF"
+#define WIFI_KEEPALIVE_WORD_LEN 9
 
 // I dont want main loop to run to often, so i set default period of 50 ms
 #define MAIN_LOOP_PERIOD_MS 50

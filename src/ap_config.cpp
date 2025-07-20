@@ -34,7 +34,8 @@ void handleRoot()
         }
     }
 
-    // Read current ports so the form shows real values
+    // Read current ports from NVS to show in form
+    // Note: PC IP is auto-discovered via MEOW_MEOW/WOOF_WOOF handshake, not configured here
     uint16_t portCtrl, portData;
     if (prefs.begin("netconf", /*readOnly=*/true))
     {
@@ -72,7 +73,6 @@ SSID:<br><input id="ssid" name="ssid"><br>
     page += R"rawliteral(
 </div><br>
 Password:<br><input name="pass" type="password"><br>
-PC IP:<br><input name="ip"><br>
 Ctrl Port:<br><input name="port_ctrl" type="number" value=")rawliteral";
     page += String(portCtrl);
     page += R"rawliteral("><br>
@@ -102,7 +102,6 @@ void handleSave()
     prefs.begin("netconf", false);
     prefs.putString ("ssid",      server.arg("ssid"));
     prefs.putString ("pass",      server.arg("pass"));
-    prefs.putString ("ip",        server.arg("ip"));
 
     uint16_t pc = server.arg("port_ctrl").toInt();
     uint16_t pd = server.arg("port_data").toInt();

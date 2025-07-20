@@ -394,9 +394,10 @@ void wait_until_ads1299_is_ready()
 
 NetConfig::NetConfig()
 {
+    // Default network settings
+    // Note: PC IP is not stored - it's auto-discovered at runtime
     s_.ssid      = "ESP32";
     s_.password  = "esp32-setup";
-    s_.ip        = IPAddress(192,168,4,1);
     s_.portCtrl  = UDP_PORT_CTRL;
     s_.portData  = UDP_PORT_PC_DATA;
 }
@@ -409,10 +410,6 @@ bool NetConfig::load()
 
     s_.ssid      = p.getString("ssid",  s_.ssid);
     s_.password  = p.getString("pass",  s_.password);
-
-    String ipStr = p.getString("ip",    s_.ip.toString());  // ← read text
-    s_.ip.fromString(ipStr);                                // convert to IP
-
     s_.portCtrl  = p.getUShort("port_ctrl", s_.portCtrl);
     s_.portData  = p.getUShort("port_data", s_.portData);
     p.end();
@@ -426,7 +423,6 @@ bool NetConfig::save() const
 
     p.putString ("ssid",       s_.ssid);
     p.putString ("pass",       s_.password);
-    p.putString ("ip",         s_.ip.toString()); // ← save text
     p.putUShort ("port_ctrl",  s_.portCtrl);
     p.putUShort ("port_data",  s_.portData);
     p.end();

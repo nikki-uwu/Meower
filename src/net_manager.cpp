@@ -110,7 +110,6 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
 //    sleeps until a packet arrives - there is no polling overhead.
 void NetManager::begin(const char* ssid,
                        const char* pass,
-                       const char* ip,
                        uint16_t    localPortCtrl,
                        uint16_t    remotePortData)
 {
@@ -127,7 +126,6 @@ void NetManager::begin(const char* ssid,
     // 3. Remember ports & peer IP
     _localPortCtrl  = localPortCtrl;
     _remotePortData = remotePortData;
-    _remoteIP.fromString(ip);
 
     // 4. Outbound socket
     _udp.begin(0);
@@ -233,8 +231,8 @@ void NetManager::update(void)
     // 3. Discovery beacon - 1 s cadence until a packet is heard again
     if (!_peerFound && (safeTimeDelta(now, _lastBeaconMs) >= WIFI_BEACON_PERIOD))
     {
-        Debug.print("BEACON TX");
-        _udp.beginPacket(_remoteIP, _localPortCtrl);
+        Debug.print("BEACON TX - MEOW MEOW");
+        _udp.beginPacket(IPAddress(255,255,255,255), _localPortCtrl);
         _udp.write((const uint8_t*) boardDiscoveryBeacon, sizeof(boardDiscoveryBeacon) - 1);
         _udp.endPacket();
         _lastBeaconMs = now;
@@ -284,44 +282,61 @@ void NetManager::driveLed(Blinker &led) noexcept
 void NetManager::handleRxPacket(AsyncUDPPacket& packet)
 {
     Debug.log("RX pkt len=%u", (unsigned)packet.length());
-    // 0. Ignore our own 1-byte discovery beacon (0x0A)
-    if (packet.length() == 1 && *((uint8_t*)packet.data()) == 0x0A)
+    
+    // 0. Ignore our own discovery beacon ("MEOW_MEOW")
+    if ((packet.length() == 9) && 
+        (memcmp(packet.data(), "MEOW_MEOW", 9) == 0))
     {
-        Debug.print("RX ignore: beacon echo"); 
-        return; // never queue a beacon
+        Debug.print("RX ignore: MEOW_MEOW echo"); 
+        return;
     }
 
-    // 1. 5-byte keep-alive “floof” -> refresh watchdog & mark peer present
-    if (packet.length() == WIFI_KEEPALIVE_WORD_LEN &&
-        memcmp(packet.data(), WIFI_KEEPALIVE_WORD, WIFI_KEEPALIVE_WORD_LEN) == 0)
+    // 1. PC discovery/keepalive beacon "WOOF_WOOF"
+    if ((packet.length() == WIFI_KEEPALIVE_WORD_LEN) &&
+        (memcmp(packet.data(), WIFI_KEEPALIVE_WORD, WIFI_KEEPALIVE_WORD_LEN) == 0))
     {
-        _lastRxMs  = millis();
-        _peerFound = true;
+        if (!_peerFound)
+        {
+            // DISCOVERY: First WOOF_WOOF - capture IP
+            _remoteIP = packet.remoteIP();
+            _peerFound = true;
+            Debug.log("PC discovered at %s", _remoteIP.toString().c_str());
+        }
+        // else: Already discovered - just keepalive, don't touch IP
+        
+        _lastRxMs = millis();
+        
         if (_state == LinkState::DISCONNECTED)
             _state = LinkState::IDLE;
-        return;                         // keep-alive never enters cmdQue
+        return;
     }
 
-    // 2. Over-sized packet?  Drop immediately (protection against floods).
+    // 2. If peer not found yet, reject everything else
+    if (!_peerFound)
+    {
+        Debug.log("RX dropped - waiting for WOOF_WOOF discovery");
+        return;
+    }
+
+    // 3. Over-sized packet protection
     if (packet.length() > CMD_BUFFER_SIZE - 1)
     {
         Debug.log("RX oversize: %u B dropped", (unsigned)packet.length());
         return;
     }
-
-    // 3. Copy payload into static buffer and queue it for the parser.
+    
+    // 4. Queue command
     static char rxBuf[CMD_BUFFER_SIZE];
     size_t n = packet.length();
     memcpy(rxBuf, packet.data(), n);
-    rxBuf[n] = '\0';                    // NUL-terminate for strtok_r
+    rxBuf[n] = '\0';
 
     // Try to enqueue; if the queue is full we drop this packet.
     xQueueSend(cmdQue, rxBuf, 0);
     Debug.print("RX cmd queued");
 
-    // 4. Any *valid* packet keeps the watchdog alive.
-    _lastRxMs  = millis();
-    _peerFound = true;
+    // 5. Update watchdog
+    _lastRxMs = millis();
 }
 
 void NetManager::failSafe(void)
@@ -338,11 +353,6 @@ void NetManager::failSafe(void)
     _lastBeaconMs = 0;
 
     xQueueReset(cmdQue);                 // clear command queue
-}
-
-void NetManager::setTargetIP(const String& ipStr)
-{
-    _remoteIP.fromString(ipStr);
 }
 
 void NetManager::debugPrint(void)

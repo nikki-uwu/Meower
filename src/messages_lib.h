@@ -16,7 +16,6 @@ struct MsgContext
 {
     WiFiUDP *    udp;         // raw socket for parser replies
     SPIClass *   spi;         // SPI handle if helpers need it
-    const char * udp_ip;      // PC IP (string form)
     uint16_t     udp_port_pc_ctrl; // PC UDP port
 };
 

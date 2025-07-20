@@ -117,7 +117,6 @@ void SerialCli::_cmdHelp()
         "Commands:\n"
         "  set ssid <name>\n"
         "  set pass <password>\n"
-        "  set ip   <x.x.x.x>\n"
         "  set port_ctrl <1-65535>\n"
         "  set port_data <1-65535>\n"
         "  show                 - print current values\n"
@@ -130,12 +129,10 @@ void SerialCli::_cmdShowConfig()
     _ser.printf("Current (unsaved) config:\n"
                 "  ssid       : %s\n"
                 "  pass       : %s\n"
-                "  ip         : %s\n"
                 "  port_ctrl  : %u\n"
                 "  port_data  : %u\n",
                 _cfg.ssid.c_str(),
                 _cfg.password.c_str(),      // password
-                _cfg.ip.toString().c_str(), // IPAddress to text
                 _cfg.portCtrl,
                 _cfg.portData);
 }
@@ -153,19 +150,6 @@ void SerialCli::_cmdSetConfig(const char* field,
     {
         _cfg.password = value;
         _ser.println("OK");
-        return;
-    }
-    if (strcasecmp(field, "ip") == 0)
-    {
-        if (_validIp(value))
-        {
-            _cfg.ip.fromString(value);  // ← text → IPAddress
-            _ser.println("OK");
-        }
-        else
-        {
-            _ser.println("ERR: bad IP");
-        }
         return;
     }
     if (   (strcasecmp(field, "port_ctrl") == 0)
@@ -199,7 +183,6 @@ void SerialCli::_cmdApplyConfig()
 {
     // 1. sanity checks
     if (_cfg.ssid.isEmpty())                            { _ser.println("ERR: ssid not set"); return; }
-    if (_cfg.ip == IPAddress())                         { _ser.println("ERR: ip not set");   return; }
     if ((_cfg.portCtrl == 0U) || (_cfg.portData == 0U)) { _ser.println("ERR: port not set"); return; }
 
     if (_cfg.password.isEmpty())
@@ -211,7 +194,6 @@ void SerialCli::_cmdApplyConfig()
     NetConfig nc;                          // owns the Preferences handle
     nc.setSSID    (_cfg.ssid);
     nc.setPassword(_cfg.password);
-    nc.setIP      (IPAddress(_cfg.ip));
     nc.setPortCtrl(_cfg.portCtrl);
     nc.setPortData(_cfg.portData);
     nc.save();                             // ← the only flash write
