@@ -83,9 +83,15 @@ static void send_error(const char *msg)
 // ---------------------------------------------------------------------------------------------------------------------------------
 static void cmd_ADC_RESET(char **)
 {
+    Debug.print("CMD adc_reset - user requested ADC reset");
+
+    // Stop streaming
+    net.stopStream();
+
+    // FUll ADC reset
     ads1299_full_reset();
 
-    // If we use it for BCI it does normal preset right away
+    // If we use it for BCI it does proper preset right away
     if (BCI_MODE) { BCI_preset(); }
 }
 static void cmd_START_CONT(char **)

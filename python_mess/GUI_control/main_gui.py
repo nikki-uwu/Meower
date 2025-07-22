@@ -800,7 +800,6 @@ class App(tk.Tk):
         snd = self.ser.send_and_wait
         snd(f"set ssid {ssid}")
         snd(f"set pass {pw}")
-        snd(f"set ip {self.pc_ip_var.get().strip()}")
         snd(f"set port_ctrl {self.ctrl_port_var.get().strip()}")
         snd(f"set port_data {self.data_port_var.get().strip()}")
         snd("apply and reboot")
@@ -881,29 +880,22 @@ class App(tk.Tk):
         self.pass_entry = ent
         ent.insert(0, self.pass_var.get())
 
-        # ── row-5 : PC IP ─────────────────────────────────────
-        self._create_label(parent, "PC IP", 5, 0, sticky="e")
-        self.pc_ip_var = tk.StringVar(
-            value=socket.gethostbyname(socket.gethostname()))
-        ent = self._create_entry(parent, self.pc_ip_var, 5, 1)
-        ent.insert(0, self.pc_ip_var.get())
-
         # ── row-6 : Data port ─────────────────────────────────
-        self._create_label(parent, "DATA PORT", 6, 0, sticky="e")
+        self._create_label(parent, "DATA PORT", 5, 0, sticky="e")
         self.data_port_var = tk.StringVar(value="5001")
-        ent = self._create_entry(parent, self.data_port_var, 6, 1, width=8)
+        ent = self._create_entry(parent, self.data_port_var, 5, 1, width=8)
         ent.insert(0, self.data_port_var.get())
 
         # ── row-7 : Control port ──────────────────────────────
-        self._create_label(parent, "CTRL PORT", 7, 0, sticky="e")
+        self._create_label(parent, "CTRL PORT", 6, 0, sticky="e")
         self.ctrl_port_var = tk.StringVar(value="5000")
-        ent = self._create_entry(parent, self.ctrl_port_var, 7, 1, width=8)
+        ent = self._create_entry(parent, self.ctrl_port_var, 6, 1, width=8)
         ent.insert(0, self.ctrl_port_var.get())
 
         # ── row-8 : Send-config button ────────────────────────
         ttk.Button(parent, text="SEND NET CONFIG",
                    command=self._send_net_config
-                   ).grid(row=8, column=0, columnspan=2,
+                   ).grid(row=7, column=0, columnspan=2,
                           sticky="we", pady=(4, 0))
 
         # initialise port list & schedule refresh
