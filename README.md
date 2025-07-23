@@ -178,19 +178,44 @@ The board packs multiple frames into one UDP packet for critical performance rea
 
 4. **Jitter Reduction**: Sending one packet every 56ms (at 500Hz) creates more consistent timing than 28 packets with microsecond gaps.
 
-5. **MTU Compliance**: At 1472 bytes, we stay under the standard Ethernet MTU of 1500 bytes, avoiding fragmentation which can cause packet loss.
+5. **MTU Compliance**: At 1460 bytes max, we stay under the standard Ethernet MTU of 1500 bytes, avoiding fragmentation which can cause packet loss.
 
 **Technical Details**:
 - **MTU Calculation**: Ethernet MTU (1500) - IP header (20) - UDP header (8) = 1472 bytes usable
 - **Max frames**: (1472 - 4) / 52 = 28 frames maximum per packet
-- **Default frames per packet**: 10 (configurable in `defines.h`)
+- **Frames per packet**: Adaptive (5-28 based on sampling rate, see table below)
 - **Timestamp units**: Hardware timestamp counts in 8 microsecond increments
 - **Byte order** (verified from source code): 
   - Channel data: **Big-endian** (MSB first) - ADS1299 outputs this way
   - Timestamp: **Little-endian** - ESP32 native format for efficiency  
   - Battery: **Little-endian** (IEEE 754 float) - ESP32 native format
 
-**Advanced Configuration**: Some parameters can be changed in `defines.h` (frames per packet, ports, timing, etc.) but think 10 times before changing anything! Ask for help - I'm always here and will make it easier to configure over time.
+### Adaptive Frame Packing
+
+The board intelligently adjusts packet size to maintain approximately 50 packets per second (FPS) over WiFi when possible. This provides consistent network behavior across different sampling rates:
+
+| Sampling Rate | Frames Packed | WiFi FPS | Latency |
+|--------------|---------------|----------|---------|
+| 250 Hz | 5 frames | 50 FPS | 20 ms |
+| 500 Hz | 10 frames | 50 FPS | 20 ms |
+| 1000 Hz | 20 frames | 50 FPS | 20 ms |
+| 2000 Hz | 28 frames* | 71 FPS | 14 ms |
+| 4000 Hz | 28 frames* | 143 FPS | 7 ms |
+
+*Maximum packing reached due to MTU limit (1472 bytes)
+
+**Why Pack Frames?**
+1. **WiFi Timing**: ESP32 requires ~6ms between UDP packets (max ~166 packets/second)
+2. **Network Efficiency**: Reduces overhead by up to 28x
+3. **Impossible Without Packing**: 4000 Hz = 4000 packets/second (24x over WiFi limit!)
+
+This adaptive approach ensures:
+- Consistent 50 FPS for sampling rates up to 1000 Hz
+- Minimal latency at higher rates while respecting MTU limits
+- Optimal network utilization without fragmentation
+- Board automatically adjusts when sampling rate changes
+
+**Advanced Configuration**: The board automatically adapts frame packing based on sampling rate. Other parameters can be changed in `defines.h` (ports, timing, etc.) but think 10 times before changing anything! The board starts at 250 Hz with 5-frame packing (50 FPS) by default.
 
 ### Basic Data Parsing
 
@@ -349,6 +374,7 @@ Send these commands to the control port as UTF-8 strings:
 - `esp_reboot`: Complete system restart including all hardware
 - Filters must be enabled with both master switch (`filters_on`) AND individual filter switches
 - SPI commands: M=Master ADC, S=Slave ADC, B=Both ADCs
+- Board automatically adjusts frame packing when sampling rate changes
 
 ### Reset to Setup Mode
 Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enters setup mode:
@@ -482,9 +508,9 @@ Due to the daisy-chain configuration, reading registers requires special handlin
 ┌─────────────────────────────────────────────────────────────────┐
 │                  Daisy-Chain Data Flow                          │
 ├─────────────────────────────────────────────────────────────────┤
-│   Slave ADC  ──data──>  Master ADC  ──data──>  ESP32            │
+│   Slave ADC  ──data──>  Master ADC  ──data──>  ESP32           │
 │                                                                 │
-│  Both chips must be selected (CS=LOW) simultaneously            │
+│  Both chips must be selected (CS=LOW) simultaneously           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -513,8 +539,8 @@ What we receive (30 bytes):
 ├────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
 │ ?? │ ?? │DATA│ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ ?? │ ?? │DATA│
 └────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
-         Master                                                                                                                                 Slave
-      register value                                                                                                                        register value
+         Master                                                                                                                           Slave
+      register value                                                                                                                  register value
 
 What we store:
 ┌─────────────────┬─────────────────┐
@@ -528,9 +554,11 @@ What we store:
 ```
 Command: spi B 30 0x21 0x00 [28 zeros]
 Response: 30 bytes where:
-  - Byte  3 = Master's CONFIG1 value
+  - Byte 3 = Master's CONFIG1 value
   - Byte 30 = Slave's CONFIG1 value
 ```
+
+**Important**: Currently, the simplified SPI interface only returns Master values. To read both ADCs, the firmware uses an internal `readRegisterDaisy()` function that properly handles the 30-byte transaction.
 
 ### Important Notes
 - Board automatically handles CS (chip select) for the specified target

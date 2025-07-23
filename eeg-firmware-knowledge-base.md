@@ -75,6 +75,7 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 9. Wait 50ms for slave clock lock
 10. Enable test signal (1Hz square wave)
 11. Switch to 16 MHz for normal operation
+12. Board initializes at 250 Hz with 5-frame packing (50 FPS)
 
 ### Readiness Check
 ```c
@@ -158,6 +159,39 @@ Big-endian 24-bit    8µs timer units
 - **5 slots** = 280ms buffer @ 500Hz
 - **ADC never blocks**: Skips enqueue if full
 - **FIFO order** guaranteed by FreeRTOS
+
+### Adaptive Packet Sizing
+
+The firmware dynamically adjusts frames per packet to target 50 FPS over WiFi:
+
+**Hardware Constraints**:
+1. **MTU Limit**: 1472 bytes usable → max 28 frames (28*52+4=1460 bytes)
+2. **WiFi Timing**: ESP32 needs ~6ms between packets → max ~166 packets/sec
+   - This is a hardware/driver limitation of the ESP32 WiFi stack
+   - Pushing faster causes packet drops and instability
+
+**Implementation**:
+- Lookup table in `FRAMES_PER_PACKET_LUT[5]` maps sampling rate to frame count
+- Updated when sampling rate changes in `continuous_mode_start_stop()`
+- Variables updated:
+  - `g_framesPerPacket`: How many frames to pack
+  - `g_bytesPerPacket`: ADC data size threshold  
+  - `g_udpPacketBytes`: Total UDP payload size (includes battery)
+
+**Packing Strategy**:
+| Rate | Frames | Result |
+|------|--------|--------|
+| 250 Hz | 5 | 50 FPS |
+| 500 Hz | 10 | 50 FPS |
+| 1000 Hz | 20 | 50 FPS |
+| 2000 Hz | 28 | 71 FPS (MTU limit) |
+| 4000 Hz | 28 | 143 FPS (MTU limit) |
+
+**Why This Matters**:
+- 250 Hz unpacked = 250 pkt/s → WiFi overload
+- 250 Hz with 5-frame packing = 50 pkt/s → smooth operation
+- 4000 Hz would need 4000 pkt/s unpacked → impossible
+- 4000 Hz with 28-frame packing = 143 pkt/s → just under limit
 
 ---
 
@@ -253,7 +287,7 @@ In daisy-chain mode, reading registers requires special handling because both AD
 When reading a single register in daisy-chain mode:
 - Each ADC outputs 27 bytes total (3 header bytes + 24 channel data bytes)
 - For register reads, only the 3rd byte of each ADC's response contains the actual register value
-- Master's register value appears at byte position 3 (0-indexed: rx[ 2])
+- Master's register value appears at byte position 3 (0-indexed: rx[2])
 - Slave's register value appears at byte position 30 (0-indexed: rx[29])
 - We only need to clock out 30 bytes to retrieve both register values
 
@@ -315,8 +349,9 @@ Max 256 bytes per transaction
 
 ### Memory & Queues
 - **Stack sizes**: ADC task 2048B, UDP task 2048B
-- **Queue depth**: 5 packets (280ms @ 500Hz)
-- **Packet size**: 1472B max (MTU limited)
+- **Queue depth**: 5 packets (dynamically sized based on frame packing)
+- **Packet size**: Adaptive (264-1460B based on sampling rate)
+- **Buffer allocation**: Max size (1460B + 4B battery) to handle all rates
 - **Blocking behavior**:
   - ADC/DSP task: NEVER blocks - skips enqueue if queue full
   - Data TX task: Blocks waiting for data (normal producer-consumer)
@@ -336,6 +371,7 @@ esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Deepest power-save mode
 - **Direct register IO**: 30x faster than digitalWrite
 - **DMA transfers**: Cleaner edges than byte loops
 - **Fixed-point DSP**: Consistent timing, no float variance
+- **Adaptive packing**: Single volatile read adds ~1-2 CPU cycles (12ns @ 160MHz)
 
 ---
 
