@@ -195,7 +195,7 @@ Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120]
 - **Headroom**: All stages stay within ±31 bits
 - **Reset**: Toggle off→on clears IIR states in <1ms
 
-### Important IIR Behavior
+### Important IIR Filter Behavior
 **Problem**: Large spikes can cause ringing (phantom oscillations)
 **Solution**: `sys filters_off` → `sys filters_on` instantly resets states
 
@@ -244,6 +244,25 @@ void xfer(target, length, txData, rxData) {
 2. Activate master
 3. Push 27 dummy bytes through master
 4. Next 27 bytes = slave data
+
+### Daisy-Chain Register Read Protocol
+
+In daisy-chain mode, reading registers requires special handling because both ADCs are connected in series. The slave's data output feeds into the master's data input, and the ESP32 only reads from the master.
+
+**Why 30 bytes?**
+When reading a single register in daisy-chain mode:
+- Each ADC outputs 27 bytes total (3 header bytes + 24 channel data bytes)
+- For register reads, only the 3rd byte of each ADC's response contains the actual register value
+- Master's register value appears at byte position 3 (0-indexed: rx[ 2])
+- Slave's register value appears at byte position 30 (0-indexed: rx[29])
+- We only need to clock out 30 bytes to retrieve both register values
+
+**Protocol Requirements**:
+1. **Must select both chips simultaneously** - Using target 'B' is mandatory. If only one chip is selected, the daisy chain breaks and data becomes corrupted
+2. **Must use configuration clock** (2 MHz) - ADS1299 requires slower clock for register operations
+3. **Cannot read different registers** from each ADC in one transaction - both receive the same command
+4. **Response order is fixed** - Slave data always arrives first, then Master data
+5. **Timing is critical** - The 2µs delays after CS changes ensure proper setup/hold times
 
 ---
 

@@ -472,6 +472,66 @@ spi M 3 0x45 0x07 0x00
 - 0x45 = Read starting at register 0x05 (CH1SET)
 - 0x07 = Read 8 registers (all channels)
 
+### Daisy-Chain Register Reading
+
+Due to the daisy-chain configuration, reading registers requires special handling:
+
+**How Daisy-Chain Register Reads Work:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Daisy-Chain Data Flow                          │
+├─────────────────────────────────────────────────────────────────┤
+│   Slave ADC  ──data──>  Master ADC  ──data──>  ESP32            │
+│                                                                 │
+│  Both chips must be selected (CS=LOW) simultaneously            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+When reading a register in daisy-chain mode:
+1. **Both ADCs must be chip-selected** - Using target 'B' is mandatory
+2. **Both ADCs receive the command** and prepare their responses
+3. **Data flows sequentially**: Slave response arrives first (27 bytes), then Master (27 bytes)
+4. **Register values are at specific positions**:
+   - Master's value: Byte 3 of the response
+   - Slave's value: Byte 30 of the response
+
+**30-Byte Register Read Transaction:**
+
+```
+What we send (30 bytes):
+┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
+│ 0  │ 1  │ 2  │ 3  │ 4  │ 5  │ 6  │ 7  │ 8  │ 9  │ 10 │ 11 │ 12 │ 13 │ 14 │ 15 │ 16 │ 17 │ 18 │ 19 │ 20 │ 21 │ 22 │ 23 │ 24 │ 25 │ 26 │ 27 │ 28 │ 29 │
+├────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│RREG│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│
+└────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
+ 0x2X                                     (X = register address, e.g., 0x21 for CONFIG1)
+
+What we receive (30 bytes):
+┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
+│ 0  │ 1  │ 2  │ 3  │ 4  │ 5  │ 6  │ 7  │ 8  │ 9  │ 10 │ 11 │ 12 │ 13 │ 14 │ 15 │ 16 │ 17 │ 18 │ 19 │ 20 │ 21 │ 22 │ 23 │ 24 │ 25 │ 26 │ 27 │ 28 │ 29 │
+├────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│ ?? │ ?? │DATA│ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ 0  │ ?? │ ?? │DATA│
+└────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
+         Master                                                                                                                                 Slave
+      register value                                                                                                                        register value
+
+What we store:
+┌─────────────────┬─────────────────┐
+│ Master Value    │ Slave Value     │
+├─────────────────┼─────────────────┤
+│ rx[2]           │ rx[29]          │
+└─────────────────┴─────────────────┘
+```
+
+**Example: Reading CONFIG1 register from both ADCs**
+```
+Command: spi B 30 0x21 0x00 [28 zeros]
+Response: 30 bytes where:
+  - Byte  3 = Master's CONFIG1 value
+  - Byte 30 = Slave's CONFIG1 value
+```
+
 ### Important Notes
 - Board automatically handles CS (chip select) for the specified target
 - All transactions use 2 MHz SPI clock for reliability

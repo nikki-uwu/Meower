@@ -428,3 +428,78 @@ bool NetConfig::save() const
     p.end();
     return true;
 }
+
+
+
+/**
+ * Read a single register from both ADS1299 chips in daisy-chain configuration
+ * 
+ * In daisy-chain mode, register reads work differently than single-chip mode:
+ * 
+ * 1. We MUST chip-select BOTH ADCs (master AND slave) simultaneously
+ * 2. Both ADCs receive the read command and queue their responses
+ * 3. Data flows through the chain: Slave → Master → ESP32
+ * 4. We receive responses sequentially, just like ADC samples
+ * 
+ * Data Flow Timing:
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │                    30-byte SPI Transaction                      │
+ * ├─────────────────────────────────────────────────────────────────┤
+ * │         Master Response         │        Slave Response         │
+ * │            27 bytes             │           27 bytes            │
+ * │  (but only byte 3 matters)      │   (but only byte 30 matters)  │
+ * └─────────────────────────────────────────────────────────────────┘
+ * 
+ * Each 27-byte response contains:
+ * - Bytes 1- 2: Command echo and length (ignored)  
+ * - Byte     3: The actual register value we want
+ * - Bytes 4-27: Channel data (not relevant for register reads)
+ * 
+ * Why 30 bytes? We only need the first 3 bytes from each ADC:
+ * - Master register value at position 3
+ * - Slave register value at position 30 (27 + 3)
+ * 
+ * @param reg_addr The register address to read (0x00 - 0x17)
+ * @return Structure containing both master and slave register values
+ */
+RegValues readRegisterDaisy(uint8_t reg_addr)
+{
+    // Build RREG command: 0x20 OR'd with register address
+    // This tells ADS1299 to read starting at reg_addr
+    uint8_t tx[30] = {0};
+    uint8_t rx[30] = {0};
+    
+    tx[0] = 0x20 | reg_addr;  // RREG command + register address
+    tx[1] = 0x00;             // Read 1 register (offset = 0)
+    // tx[2-29] remain 0x00 - just clock pulses to retrieve data
+    
+    // CRITICAL: Must use slower clock for register operations
+    // ADS1299 requires 2 MHz max during configuration
+    spiTransaction_OFF();
+    spiTransaction_ON(SPI_COMMAND_CLOCK);
+    
+    // CRITICAL: Target MUST be 'B' (both) in daisy-chain mode!
+    // If we only select one chip, the chain breaks and we get garbage
+    xfer('B', 30, tx, rx);
+    
+    // Return to normal speed for ADC data operations
+    spiTransaction_OFF();
+    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
+    
+    // Parse the response:
+    // In daisy-chain, data arrives in this order:
+    // [Master 27 bytes][Slave 27 bytes]
+    // But for register reads, only specific bytes matter:
+    
+    RegValues result;
+    result.master_reg_byte = rx[ 2]; // Master's register value (3rd byte)
+    result.slave_reg_byte  = rx[29]; // Slave's register value (30th byte)
+    
+    // Why these positions?
+    // Master: Sends [cmd_echo][length][REGISTER_VALUE][24 bytes of zeros]
+    //         Position: [0][1][2][3-26]
+    // Slave: Same pattern but starts at byte 27
+    //        Position: [27][28][29][30-53]
+    
+    return result;
+}
