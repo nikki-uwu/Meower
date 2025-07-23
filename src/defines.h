@@ -7,8 +7,8 @@
 #define UDP_PORT_PC_DATA 5001 // EEG/data stream (fast data)
 #define UDP_PORT_CTRL    5000 // Command/control
 
-#define SPI_COMMAND_CLOCK 2000000           // Hz, during full reset we are ALWAYS do that at 2 MHz, since at 8 or 5 or even 4 MHz sometimes it's unstable
-#define SPI_NORMAL_OPERATION_CLOCK 16000000 // Hz, 8 MHz at the moment is the highest stable clock i was able to get
+#define SPI_COMMAND_CLOCK 2000000           // Hz, during full reset we ALWAYS do that at 2 MHz, since at 8 or 5 or even 4 MHz sometimes it's unstable
+#define SPI_NORMAL_OPERATION_CLOCK 16000000 // Hz, 16 MHz at the moment is the highest stable clock i was able to get
 
 #define PIN_LED       20 // physical pin 30, GPIO20, U0RXD
 #define LED_ON_MS     250  // LED HIGH for 250 ms
@@ -16,17 +16,30 @@
 
 #define PIN_BAT_SENSE   4 // physical pin 18, GPIO4, ADC1_CH4
 #define BAT_SCALE       0.001235f // Scaling value to bring ADC values to actual battery voltage
-#define BAT_SAMPLING_MS 32 // ms between smapling of battery voltage
+#define BAT_SAMPLING_MS 32 // ms between sampling of battery voltage
 
-// Size of a counter we add at the end of the each ADC frame. It's uint32 so 4 bytes
-// We assume that 
-#define TIMESTAMP_SIZE 4
+// Frame packing configuration - combines multiple ADC frames into single UDP packet
+// 
+// Why pack frames?
+// 1. MTU LIMIT: Ethernet MTU is 1500 bytes. After IP/UDP headers: 1472 bytes usable
+//    Maximum frames = (1472 - 4) / 52 = 28.23, so MAX = 28 frames
+// 2. WIFI LIMIT: ESP32 needs ~6ms minimum between UDP packets (166 pkt/s max)
+//    Without packing at 4000Hz = 4000 pkt/s = IMPOSSIBLE
+//    With max packing at 4000Hz = 142 pkt/s = SAFE
+// 3. EFFICIENCY: Each packet has 28 bytes overhead. Packing reduces overhead 28x
+// 
+// Frame structure: [48 Bytes ADC data][4 Bytes timestamp] = 52 bytes per frame
+// Packet structure: [Frame1][Frame2]...[FrameN][4 Bytes battery] = N*52+4 bytes total
+// 
+// Examples:
+// -  5 frames:  5*52+4 =  264 bytes (good for 250Hz -> 50 pkt/s)
+// - 28 frames: 28*52+4 = 1460 bytes (max MTU safe, for high rates)
+#define MAX_FRAMES_PER_PACKET 28  // MTU limit: 28*52+4 = 1460 < 1472
+#define TARGET_WIFI_FPS 50        // Target packet rate when possible
 
-// User can set number of frames combined together to save on power or just to have slower pull rate for wifi
-// Every frame still gets counter, so it's just several independent frames stacked together.
-// MIN ---  1 (48 bytes for parsed adc data, 4 bytes for timer and at the end of combined frames 4 bytes for battery float)
-// MAX --- 28 all frames with timestamps and battery value should be always < 1472 bytes (MTU), 52 * 28 + 4 = 1460
-#define FRAMES_PER_PACKET 10
+// Default frame packing for 250 Hz startup (board initializes at 250 Hz)
+// 250 Hz / 5 frames = 50 FPS target
+#define DEFAULT_FRAMES_PER_PACKET 5
 
 // Buffer size for incoming command UDP packets (adjust based on your max command length)
 #define CMD_BUFFER_SIZE 512 // Bytes
@@ -37,14 +50,14 @@
 // Time out for board to say PC was lost
 #define WIFI_SERVER_TIMEOUT 10000 // ms
 
-// Give-up time for Wi-Fi reconnect watchdog (2 minutes)
+// Give-up time for Wi-Fi reconnect watchdog (1 minutes)
 #define WIFI_RECONNECT_GIVEUP_MS 60000 // ms
 
 // PC must send WOOF_WOOF for discovery and keepalive (every < 10 s)
 #define WIFI_KEEPALIVE_WORD "WOOF_WOOF"
 #define WIFI_KEEPALIVE_WORD_LEN 9
 
-// I dont want main loop to run to often, so i set default period of 50 ms
+// I don't want main loop to run too often, so i set default period of 50 ms
 #define MAIN_LOOP_PERIOD_MS 50
 
 // Do you need debug stuff?
@@ -79,12 +92,18 @@
 #define PIN_CS_MASTER  1 // ADS1299 data-ready pin; must be a free GPIO
 #define PIN_CS_SLAVE   5 // ADS1299 data-ready pin; must be a free GPIO
 
-// Size of the frame for 2 ADCs together, 27 bytes per each: 3 bytes constant load, 8 bytes(24 bits per sample) * 8 channels
+// Size of the frame for 2 ADCs together, 27 bytes per each: 3 bytes constant load + 8 channels * 3 bytes (24 bits per sample)
 #define ADC_SAMPLES_FRAME 54 // bytes
 
 // Size of the frame for 2 ADCs together without preambs, 24 bits * 16 = 384 bits or 48 bytes
-// we do not need contant load, so we will trim it and this way we can pack more frames together
+// we do not need constant load, so we will trim it and this way we can pack more frames together
 #define ADC_PARSED_FRAME 48 // bytes
+
+// Size of a counter we add at the end of each ADC frame. It's uint32 so 4 bytes
+#define TIMESTAMP_SIZE 4
+
+// One full ADC frame size with timestamp included at the end in BYTES
+#define ADC_FULL_FRAME_SIZE (ADC_PARSED_FRAME + TIMESTAMP_SIZE)
 
 // Number of ADC channels we have
 #define NUMBER_OF_ADC_CHANNELS 16
@@ -92,7 +111,7 @@
 // Number of filter presets for different frequencies
 #define NUM_OF_FREQ_PRESETS 5
 
-// Number of filter presets for different frequencies
+// Number of DC cutoff frequency presets
 #define NUM_OF_CUTOFF_DC_PRESETS 5
 
 // 50/60 Hz set
