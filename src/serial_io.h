@@ -22,7 +22,7 @@ class SerialCli
         void begin();  // prints CLI banner, port must already be open
         void update(); // parse incoming chars
 
-        const NetSettings& getConfig() const  // Basicaly get a reference (pointer) to saved internal config in read-only mode
+        const NetSettings& getConfig() const  // Basically get a reference (pointer) to saved internal config in read-only mode
         {
             return _cfg;
         }

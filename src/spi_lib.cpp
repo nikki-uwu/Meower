@@ -114,7 +114,7 @@ void IRAM_ATTR xfer(char            target,
     portENTER_CRITICAL(&spiMux);
 
     // Deselect both pins before transfer to be sure both are switched off
-    cs_both_high(); // again, WRITE_PERI_REG instead of digitalWire, faster better, perfectly in sync
+    cs_both_high(); // again, WRITE_PERI_REG instead of digitalWrite, faster better, perfectly in sync
 
     // Set chip select pins based on target
     switch (target)
@@ -123,7 +123,7 @@ void IRAM_ATTR xfer(char            target,
         case 'S': cs_slave_low();  break; // Slave only
         case 'B': cs_both_low();   break; // Both
         case 'T':                  break; // Test mode - reserved for sending visible SPI clock pulses to the scope
-        default : portEXIT_CRITICAL(&spiMux); return; // If non of those - stop time critical mode and exit the entire function
+        default : portEXIT_CRITICAL(&spiMux); return; // If none of those - stop time critical mode and exit the entire function
     }
 
     // 2 us time delay before writing / reading
@@ -148,7 +148,7 @@ void IRAM_ATTR xfer(char            target,
     esp_rom_delay_us(CS_DELAY_US); // must be ≥ 4 clocks
 
     // Deselect both pins after transfer
-    cs_both_high(); // WRITE_PERI_REG used here to get simultanious toggle
+    cs_both_high(); // WRITE_PERI_REG used here to get simultaneous toggle
 
     // interrupts back on
     portEXIT_CRITICAL(&spiMux);

@@ -5,12 +5,17 @@ extern Debugger Debug;
 extern volatile uint32_t g_selectSamplingFreq;
 extern volatile bool continuousReading;
 
-// Setting start signal for contious mode. Ether ON or OFF
+// Update packet size to maintain ~50 FPS when possible
+extern volatile uint32_t g_framesPerPacket;
+extern volatile uint32_t g_bytesPerPacket;
+extern volatile uint32_t g_udpPacketBytes;
+
+// Setting start signal for continuous mode. Either ON or OFF
 void continuous_mode_start_stop(uint8_t on_off)
 {
     if (on_off == HIGH) // Start continuous mode
     {
-        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
+        // Safe SPI transaction (2 MHz for config then back to 16 MHz)
         spiTransaction_OFF();
         spiTransaction_ON(SPI_COMMAND_CLOCK);
 
@@ -30,6 +35,21 @@ void continuous_mode_start_stop(uint8_t on_off)
             case 2: g_selectSamplingFreq = 4; break; // 4000 Hz
         }
 
+
+        // Update adaptive frame packing based on sampling rate
+        // Goal: Maintain ~50 packets/second when possible, respect WiFi timing limits
+        g_framesPerPacket = FRAMES_PER_PACKET_LUT[g_selectSamplingFreq]; // How many 52-byte frames to pack
+        g_bytesPerPacket = ADC_FULL_FRAME_SIZE * g_framesPerPacket;      // Total ADC data bytes (frames * 52)
+        g_udpPacketBytes = g_bytesPerPacket + Battery_Sense::DATA_SIZE;  // Final UDP payload size (ADC + 4-byte battery)
+
+        // Log the configuration change
+        // Formula: actual_sample_rate / frames_per_packet = packets_per_second
+        // Example: 250 Hz / 5 frames = 50 packets/second
+        Debug.log("[ADC] Sampling rate index %u, packing %u frames = %u FPS", 
+                    g_selectSamplingFreq, 
+                    g_framesPerPacket,
+                    (250 << (4 - g_selectSamplingFreq)) / g_framesPerPacket);
+
         // Turn ON start signal (pull it UP)
         digitalWrite(PIN_START, on_off);
 
@@ -48,11 +68,11 @@ void continuous_mode_start_stop(uint8_t on_off)
     {
         // Prepare SDATAC message and empty holder for receiving
         uint8_t SDATAC_mes = 0x11;
-        uint8_t rx_mes     = 0x00; // just empty message, we do need any response here
+        uint8_t rx_mes     = 0x00; // just empty message, we don't need any response here
 
         // After SDATAC message we must wait 4 clocks, but since we have a small
         // delay before and after reading in xfer function we can ignore it
-        // Safe SPI transaction (2 MHz for config then back to 8 MHz)
+        // Safe SPI transaction (2 MHz for config then back to 16 MHz)
         spiTransaction_OFF();
         spiTransaction_ON(SPI_COMMAND_CLOCK);
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
@@ -171,7 +191,7 @@ void ads1299_full_reset()
     spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
     // Based on datasheet all CS and START (it says all digital signals) should go LOW
-    // Page 62, check diagramm
+    // Page 62, check diagram
     digitalWrite(PIN_CS_MASTER, LOW);
     digitalWrite(PIN_CS_SLAVE , LOW);
     digitalWrite(PIN_START    , LOW);
@@ -201,13 +221,13 @@ void ads1299_full_reset()
     // Pull CS back, but keep START LOW
     digitalWrite(PIN_CS_MASTER, HIGH);
     digitalWrite(PIN_CS_SLAVE , HIGH);
-    digitalWrite(PIN_START    , LOW ); // this one is already LOW, but lets make it safe
+    digitalWrite(PIN_START    , LOW ); // this one is already LOW, but let's make it safe
 
     // Stop continuous data mode (SDATAC)
     // Datasheet - 9.5.3 SPI command definitions, p.40.
     {
         uint8_t SDATAC_mes = 0x11;
-        uint8_t rx_mes     = 0; // just empty message, we do need any response here
+        uint8_t rx_mes     = 0; // just empty message, we don't need any response here
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
     }
 
@@ -222,7 +242,7 @@ void ads1299_full_reset()
     // Config_3 = 0b11100000; 0xE0
     {
         const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xE0};
-        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we don't need any response here
         xfer('B', 3u, Master_conf_3, rx_mes);
     }
 
@@ -234,12 +254,12 @@ void ads1299_full_reset()
     // use Always 1 | Daisy-chain enable | Clock output mode | always 1 | always 0 | DR2 | DR1 | DR0
     //                   76543210
     //                   1XY10ZZZ
-    // Master_conf_1 = 0b10110101; # Daisy ON, Clock OUT ON,  500 SPS - i moved it to 500 Hz to get better frequency response in range [0 - 100 Hz]. The reason is sigma delta adc 
-    // Slave_conf_1  = 0b10010101; # Daisy ON, Clock OUT OFF, 500 SPS
+    // Master_conf_1 = 0b10110110; # Daisy ON, Clock OUT ON,  250 SPS
+    // Slave_conf_1  = 0b10010110; # Daisy ON, Clock OUT OFF, 250 SPS
     {
         // Master config
         const uint8_t Master_conf_1[3u] = {0x41, 0x00, 0xB6};
-        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we don't need any response here
         xfer('M', 3u, Master_conf_1, rx_mes);
 
         // Slave config
@@ -249,7 +269,7 @@ void ads1299_full_reset()
         // CRITICAL: Wait for clock sync between master and slave
         delay(50);  // Give slave time to lock onto master's clock
 
-        // Set reference signal to base again, since slave was in what ever state so
+        // Set reference signal to base again, since slave was in whatever state so
         // after this config 3 messages they will be in similar modes again
         const uint8_t Config_3[3u] = {0x43, 0x00, 0xE0};
         xfer('B', 3u, Config_3, rx_mes);
@@ -268,7 +288,7 @@ void ads1299_full_reset()
     // Config_2 = 0b11010100
     {
         const uint8_t Config_2[3u]      = {0x42, 0x00, 0xD4};
-        uint8_t              rx_mes[3u] = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u] = {0}; // just empty message, we don't need any response here
         xfer('B', 3u, Config_2, rx_mes);
     }
 
@@ -283,7 +303,7 @@ void ads1299_full_reset()
     for (uint8_t ind = 0; ind < 8u; ind++)
     {
         const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x05 };
-        uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u]   = {0}; // just empty message, we don't need any response here
         xfer('B', 3u, Config_Channels, rx_mes);
 
         // wait for 1 ms
@@ -292,12 +312,12 @@ void ads1299_full_reset()
 
     // Reconfigure SPI frequency to working one
     spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 16 MHz)
+    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start at normal working frequency (most stable i've seen is 16 MHz)
 }
 
 void BCI_preset()
 {
-    // Make sure continuous Mode is OFF, because we are doing full reset
+    // Make sure continuous Mode is OFF, because we are doing BCI preset
     continuous_mode_start_stop(LOW);
 
     // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
@@ -315,7 +335,7 @@ void BCI_preset()
     for (uint8_t ind = 0; ind < 8u; ind++)
     {
         const uint8_t Config_Channels[3u] = { static_cast<uint8_t>(0x45 + ind), 0x00, 0x08 };
-        uint8_t              rx_mes[3u]   = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u]   = {0}; // just empty message, we don't need any response here
         xfer('B', 3u, Config_Channels, rx_mes);
 
         // wait for 1 ms
@@ -333,7 +353,7 @@ void BCI_preset()
     // Config_3 = 0b11100000; 0xE0
     {
         const uint8_t Master_conf_3[3u] = {0x43, 0x00, 0xEC};
-        uint8_t              rx_mes[3u]        = {0}; // just empty message, we do need any response here
+        uint8_t              rx_mes[3u]        = {0}; // just empty message, we don't need any response here
         xfer('M', 3u, Master_conf_3, rx_mes);
 
         const uint8_t Slave_conf_3[3u] = {0x43, 0x00, 0xE8};
@@ -462,7 +482,7 @@ bool NetConfig::save() const
  * @param reg_addr The register address to read (0x00 - 0x17)
  * @return Structure containing both master and slave register values
  */
-RegValues readRegisterDaisy(uint8_t reg_addr)
+RegValues read_Register_Daisy(uint8_t reg_addr)
 {
     // Build RREG command: 0x20 OR'd with register address
     // This tells ADS1299 to read starting at reg_addr

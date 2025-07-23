@@ -15,7 +15,8 @@
 // Global variables
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-extern volatile bool continuousReading;
+extern volatile bool     continuousReading;
+extern const    uint32_t FRAMES_PER_PACKET_LUT[5];
 
 
 
@@ -35,11 +36,11 @@ struct RegValues
 // Declarations in .cpp
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
-// Full ADS1299 reset
 void ads1299_full_reset();
 void BCI_preset();
 void continuous_mode_start_stop(uint8_t on_off);
 void wait_until_ads1299_is_ready();
+RegValues read_Register_Daisy(uint8_t reg_addr);
 
 
 
@@ -259,7 +260,7 @@ public:
     void ESP_REST(const char* reason = "user_reboot")
     {
         // Tag the boot with a human-readable flag and perform a clean restart.
-        WiFi.mode(WIFI_MODE_NULL);     // stop radio  safe NVS write
+        WiFi.mode(WIFI_MODE_NULL);     // stop radio for safe NVS write
         delay(100);
 
         Preferences p;

@@ -14,7 +14,7 @@
 static inline void removeAdcPreambles(const uint8_t * const rawADCdata   ,
                                       uint8_t * const       parsedADCdata)
 {
-    // Now lets remove two preambs from raw ADC frame, it will save us 6 bytes and we can pack more frames together because of that
+    // Now let's remove two preambles from raw ADC frame, it will save us 6 bytes and we can pack more frames together because of that
 
     // 1. Copy the first block of 24 data bytes (first 8 channels)
     // This skips the first 3 bytes of the source buffer (indices 0, 1, 2).
@@ -53,7 +53,7 @@ static inline void unpack_24to32_and_gain(const uint8_t * data_in    ,
         // Sign-extend to 32 bits
         int32_t val = (raw & 0x800000) ? (int32_t)(raw | 0xFF000000) : (int32_t)raw;
 
-        // Scale signal up (<<8 pr *256) so it takes the entire dynamic range of int32
+        // Scale signal up (<<8 or *256) so it takes the entire dynamic range of int32
         data_out[ch] = val << (8 + digitalGain);
         data_in += 3;
     }
@@ -113,8 +113,8 @@ static inline void adcEqualizer_16ch_7tap(int32_t * data_inout  , // [16]: in-pl
     constexpr int32_t FIR_SHIFT = 30; 
 
     // Filter coefficients
-    static const int32_t FIR_H[2][FIR_NUM_TAPS] = { {        0,        0,          0, 1073741824,          0,        0,        0 } ,
-                                                    { -9944796, 67993610, -382646929, 1722938053, -382646929, 67993610, -9944796 } }; // BYPASS
+    static const int32_t FIR_H[2][FIR_NUM_TAPS] = { {        0,        0,          0, 1073741824,          0,        0,        0 } ,  // BYPASS
+                                                    { -9944796, 67993610, -382646929, 1722938053, -382646929, 67993610, -9944796 } };
 
     // Rolling history for FIR (16 x 7 x 4 B = 448 B)
     static int32_t fir_hist[NUMBER_OF_ADC_CHANNELS][FIR_NUM_TAPS] = {{0}};
@@ -427,7 +427,7 @@ static inline void notch5060Hz_16ch_4p(int32_t *      data_inout        ,
     }
 }
 
-// notch100120Hz_16ch_2p - 4th-order 100/120 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
+// notch100120Hz_16ch_4p - 4th-order 100/120 Hz notch filter, cascaded biquads, in-place, 16 channels, private state
 // ------------------------------------------------------------------------------------------------------------------
 // Notch filter at 100/120 Hz. 4th order = two cascaded 2nd-order sections (biquads)
 // - data_inout:         pointer to 16 int32_t values to filter (input and output, same buffer)

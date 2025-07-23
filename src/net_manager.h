@@ -8,7 +8,7 @@
 #include <WiFiUdp.h>
 #include <esp_wifi.h>           // deep power-save
 #include <AsyncUDP.h>      // Arduino wrapper - NO extra libs to install
-#include "defines.h"            // SSID, PASSWORD, UDP_IP, UDP_PORT_PC, UDP_PORT_C3
+#include "defines.h"            // SSID, UDP_IP, UDP_PORT_PC, UDP_PORT_C3
 #include "helpers.h"
 
 
@@ -82,7 +82,7 @@ public:
 
     void onWifiEvent(WiFiEvent_t event);   // called by global callback
 
-    void debugPrint(void);      // prints all runtime flags when NET_DEBUG
+    void debugPrint(void);      // prints all runtime flags when SERIAL_DEBUG
 
     inline void debugGate(uint32_t now);
 

@@ -88,7 +88,7 @@ static void cmd_ADC_RESET(char **)
     // Stop streaming
     net.stopStream();
 
-    // FUll ADC reset
+    // Full ADC reset
     ads1299_full_reset();
 
     // If we use it for BCI it does proper preset right away
@@ -155,7 +155,7 @@ static void cmd_SPI_SR(char **args, const char *orig)
         tx[i] = (uint8_t) strtoul(tok, nullptr, 0);
     }
 
-    // Safe SPI transaction (2 MHz for config then back to 8 MHz)
+    // Safe SPI transaction (2 MHz for config then back to 16 MHz)
     spiTransaction_OFF();
     spiTransaction_ON(SPI_COMMAND_CLOCK);
     xfer(target, len, tx, rx);
@@ -166,7 +166,7 @@ static void cmd_SPI_SR(char **args, const char *orig)
     send_reply(rx, len);
 }
 
-// Hard reboot - returns only after the MCU restarts
+// Hard reboot - never returns
 static void cmd_ESP_REBOOT(char ** )
 {
     send_reply_line("OK: rebooting…");

@@ -30,14 +30,27 @@ SerialCli     CLI(Serial, SERIAL_BAUD);     // even tho just one hardware Serial
 
 // FreeRTOS handles
 static TaskHandle_t  adcTaskHandle = nullptr;
-static QueueHandle_t adcFrameQue   = nullptr; // ONE processed ADC packet (frames+timestamps); battery added later in transmission task
+static QueueHandle_t adcFrameQue   = nullptr; // Processed ADC packet with multiple frames (frames+timestamps); battery added later in transmission task
 QueueHandle_t        cmdQue        = nullptr;
 static MsgContext    msgCtx;
 
-// continuous reading mode state and maximum time we will wait before reseting mode if anything happened and ADC give no data back
+// Dynamic packet sizing to maintain ~50 FPS over WiFi
+// These variables are updated in continuous_mode_start_stop() when sampling rate changes
+volatile uint32_t g_framesPerPacket = DEFAULT_FRAMES_PER_PACKET;  // Number of ADC frames to pack per UDP packet (5 frames at startup for 250 Hz = 50 FPS)
+volatile uint32_t g_bytesPerPacket  = ADC_FULL_FRAME_SIZE * DEFAULT_FRAMES_PER_PACKET;     // Size in bytes of ADC data portion only (frames * 52 bytes each)
+volatile uint32_t g_udpPacketBytes  = (ADC_FULL_FRAME_SIZE * DEFAULT_FRAMES_PER_PACKET) + Battery_Sense::DATA_SIZE; // Total UDP payload size (ADC data + 4-byte battery voltage)
+
+// Lookup table: sampling rate -> frames to pack for ~50 FPS
+const uint32_t FRAMES_PER_PACKET_LUT[5] = {  5 ,  //  250 Hz:  250/ 5 = 50 FPS exactly
+                                            10 ,  //  500 Hz:  500/10 = 50 FPS exactly  
+                                            20 ,  // 1000 Hz: 1000/20 = 50 FPS exactly
+                                            28 ,  // 2000 Hz: 2000/28 = 71.4 FPS (max packing)
+                                            28 }; // 4000 Hz: 4000/28 = 142.8 FPS (max packing)
+
+// continuous reading mode state and maximum time we will wait before resseting mode if anything happened and ADC give no data back
 volatile bool continuousReading = false;
 
-// Timmer counter for main loop, so we can control how often it's executed. Default is 1 time per 50 ms
+// Timer counter for main loop, so we can control how often it's executed. Default is 1 time per 50 ms
 static uint32_t previousTime = 0; // timer for main loop
 
 // Digital gain. If signal you analyze uses maximum +-0.2V or any other value you better to
@@ -67,15 +80,6 @@ volatile uint32_t g_selectSamplingFreq = 0; // Sampling rate selector index
 // [0.5 1 2 4 8] Hz
 // [  0 1 2 3 4] select number
 volatile uint32_t g_selectDCcutoffFreq = 0;
-
-// One full ADC frame size with timestamp included at the end in BYTES
-constexpr size_t ADC_FULL_FRAME_SIZE = ADC_PARSED_FRAME + TIMESTAMP_SIZE;
-
-// Example: ADC_PACKET_BYTES = 28 -> 52 × 28 = 1 456 B. Battery (4 Bytes) is
-constexpr size_t ADC_PACKET_BYTES = ADC_FULL_FRAME_SIZE * FRAMES_PER_PACKET;
-
-// One complete UDP payload: (ADC_FULL_FRAME_SIZE = 52 B) × 28 frames + 4-byte battery = 1 460 B
-constexpr size_t UDP_PACKET_BYTES = (ADC_FULL_FRAME_SIZE * FRAMES_PER_PACKET) + Battery_Sense::DATA_SIZE;
 
 // ADC equalizer master switch. The SYS commands FILTER_EQUALIZER_ON / FILTER_EQUALIZER_OFF toggle it at run time.
 volatile bool g_adcEqualizer = false;
@@ -157,7 +161,7 @@ void IRAM_ATTR drdy_isr() // IRAM_ATTR: place code in IRAM, not flash -> no cach
 // Why like this? because then we do not have to pass data vectors from ADC to UDP task
 // which were taking too much time and stallking device and cause at some points
 // frame loss from wifi side (wifi task were to slow)
-// The ADC task queues a single 52-byte frame to adcFrameQue.
+// The ADC task queues multiple frames to adcFrameQue.
 // DSP packs FRAMES_PER_PACKET (N) frames and later hands the full datagram to the network task.
 void IRAM_ATTR task_getADCsamplesAndPack(void*)
 {
@@ -165,14 +169,15 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
     const uint8_t tx_mes[ADC_SAMPLES_FRAME] = {0};
 
     // Raw ADC data from SPI
-    // we need it separetely to parse samle and remove two preambules from it, so we can have 48 bytes per one raw ADC frame instead of 54 
+    // we need it separately to parse sample and remove two preambles from it, so we can have 48 bytes per one raw ADC frame instead of 54 
     static uint8_t rawADCdata[ADC_SAMPLES_FRAME];
 
-    // Parsed ADC frame without preambs
+    // Parsed ADC frame without preambles
     static uint8_t parsedADCdata[ADC_PARSED_FRAME];
 
-    // Buffer to store ONE parsed ADC frame (preamble removed) with timestamp appended. size is ADC_FULL_FRAME_SIZE (52 B)
-    static uint8_t dataBuffer[ADC_PACKET_BYTES];
+    // Buffer to store up to MAX_FRAMES_PER_PACKET frames with timestamps
+    // Each frame: [48 Bytes ADC data][4 Bytes timestamp] = 52 bytes
+    static uint8_t dataBuffer[ADC_FULL_FRAME_SIZE * MAX_FRAMES_PER_PACKET];
 
     // Buffer for unpacked ADC samples from 24 to 32 bits which we will use for processing
     static int32_t dspBuffer[NUMBER_OF_ADC_CHANNELS] = {0};
@@ -198,7 +203,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
             bytesWritten = 0;
         }
 
-        // store were we continuously reading or not for the next frame
+        // store whether we were continuously reading or not for the next frame
         wasReading = continuousReading;
         
         // Wait until ADC pulls DRDY down (adc samples are ready to read)
@@ -225,7 +230,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
             // Here both master and slave should have Chip Select active
             xfer('B', ADC_SAMPLES_FRAME, tx_mes, rawADCdata);
 
-            // Now lets remove two preambs from raw ADC frame, it will save us 6 bytes and we can pack more frames together because of that
+            // Now let's remove two preambles from raw ADC frame, it will save us 6 bytes and we can pack more frames together because of that
             removeAdcPreambles(rawADCdata, parsedADCdata);
 
             // Unpack all smaple to 32 bits, left-shift by 8 bits (multiply by 256) to
@@ -242,7 +247,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
             // Filtering
             // BYPASS if global for all filters is OFF
             // --------------------------------------------------------------------------------------------
-            adcEqualizer_16ch_7tap(dspBuffer,                                             g_adcEqualizer  && g_filtersEnabled); // if we need adc frequency responce equalizer - filter data using FIR with 7 taps
+            adcEqualizer_16ch_7tap(dspBuffer,                                             g_adcEqualizer  && g_filtersEnabled); // if we need adc frequency response equalizer - filter data using FIR with 7 taps
             dcBlockerIIR_16ch_2p  (dspBuffer, g_selectSamplingFreq, g_selectDCcutoffFreq, g_removeDC      && g_filtersEnabled); // Remove DC
             notch5060Hz_16ch_4p   (dspBuffer, g_selectSamplingFreq, g_selectNetworkFreq , g_block5060Hz   && g_filtersEnabled); // Notch filter for 50/60 Hz
             notch100120Hz_16ch_4p (dspBuffer, g_selectSamplingFreq, g_selectNetworkFreq , g_block100120Hz && g_filtersEnabled); // Notch filter for 100/120 Hz
@@ -263,7 +268,7 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
             bytesWritten += ADC_FULL_FRAME_SIZE;
 
             // Is the data buffer now exactly full?
-            if (bytesWritten >= ADC_PACKET_BYTES)
+            if (bytesWritten >= g_bytesPerPacket)
             {
                 // Send one complete packet (ADC frames + time-stamps) to Wi-Fi task.
                 // Battery voltage is merged in the UDP task just before transmission.
@@ -297,24 +302,24 @@ void IRAM_ATTR task_getADCsamplesAndPack(void*)
 // Only put the fastest, most time-sensitive code into IRAM.
 void task_dataTransmission(void*)
 {
-    // Pre-allocate buffer for several parsed and processed ADC frames
-    // actually holds one full UDP datagram (N frames + battery)
-    static uint8_t txBuf[UDP_PACKET_BYTES];
+    // Pre-allocate buffer sized for maximum possible UDP payload
+    // Actual usage varies: 264 bytes (250Hz) to 1460 bytes (2kHz/4kHz)
+    // Buffer must handle worst case: 28 frames * 52 bytes + 4 byte battery = 1460 bytes
+    static uint8_t txBuf[ADC_FULL_FRAME_SIZE * MAX_FRAMES_PER_PACKET + Battery_Sense::DATA_SIZE];
 
     // Start infinite loop
     for (;;) // Endless loop - a FreeRTOS task never returns.
     {
-
         // wait forever until DSP overwrites mailbox with a new set of processed frames
         xQueueReceive(adcFrameQue, txBuf, portMAX_DELAY);
 
         // Append the latest battery voltage (4-byte float)
         Battery_Sense::value_t vbatt = BatterySense.getVoltage();
-        memcpy(&txBuf[ADC_PACKET_BYTES], &vbatt, Battery_Sense::DATA_SIZE);
+        memcpy(&txBuf[g_bytesPerPacket], &vbatt, Battery_Sense::DATA_SIZE);
         
         // Send if peer active
         if (net.wantStream())
-            net.sendData(txBuf, UDP_PACKET_BYTES);
+            net.sendData(txBuf, g_udpPacketBytes);
     }
 }
 
@@ -481,8 +486,8 @@ void setup()
     // Blocking rules:
     //   - ADC and DSP task never blocks. If sender task is too slow and adc task cant write it will skip writing right away
     //   - Data Transmittion task blocks until at least one item is inside the que and if ADC/DSP task is running
-    adcFrameQue = xQueueCreate(5,                 // 5 items (two full packets)
-                               ADC_PACKET_BYTES); // size of one ADC frames with time stamps - battery not included
+    adcFrameQue = xQueueCreate(5,                                            // 5 packets buffer (content varies by sampling rate)
+                               ADC_FULL_FRAME_SIZE * MAX_FRAMES_PER_PACKET); // size of one complete packet (max possible) - battery not included
 
     // Que for command from PC
     cmdQue = xQueueCreate(8,               // up to 8 in-flight commands
@@ -521,7 +526,7 @@ void setup()
     if (BCI_MODE) { BCI_preset(); } // Set normal BCI mode
 
     Debug.log("[BOOT] ssid      : %s", ssid.c_str());
-    Debug.log("[BOOT] pass      : %s", pass.c_str());    // blank if not set
+    Debug.log("[BOOT] pass      : %s", pass.c_str());    // password is shown in plain text
     Debug.log("[BOOT] PC ip     : auto-discover via WOOF_WOOF");
     Debug.log("[BOOT] board ip  : %s", net.getLocalIP().toString().c_str());
     Debug.log("[BOOT] port_ctrl : %u", port_ctrl);
@@ -533,7 +538,7 @@ void setup()
 // ---------------------------------------------------------------------------------------------------------------------------------
 void loop()
 {
-    // Wait until between last loop start and this one exactely given amount of ms passed. Default is 50 ms
+    // Wait until between last loop start and this one exactly given amount of ms passed. Default is 50 ms
     uint32_t currentTime    = millis();                                           // get current time
     uint32_t timeDifference = MAIN_LOOP_PERIOD_MS - (currentTime - previousTime); // compare how much time passed since last loop and get how long to wait to get needed delay
 
