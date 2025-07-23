@@ -508,9 +508,9 @@ Due to the daisy-chain configuration, reading registers requires special handlin
 ┌─────────────────────────────────────────────────────────────────┐
 │                  Daisy-Chain Data Flow                          │
 ├─────────────────────────────────────────────────────────────────┤
-│   Slave ADC  ──data──>  Master ADC  ──data──>  ESP32           │
+│   Slave ADC  ──data──>  Master ADC  ──data──>  ESP32            │
 │                                                                 │
-│  Both chips must be selected (CS=LOW) simultaneously           │
+│  Both chips must be selected (CS=LOW) simultaneously            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
