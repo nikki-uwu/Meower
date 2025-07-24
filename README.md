@@ -138,12 +138,12 @@ After configuration, the LED shows board status:
 The board always sends data in a single UDP datagram (no fragmentation). You can safely read with a 1500-byte buffer.
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    UDP Packet (max 1472 bytes)                      │
-├─────────────────────────────────────────────────────────────────────┤
-│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage       │
-│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32)     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    UDP Packet (max 1472 bytes)                  │
+├─────────────────────────────────────────────────────────────────┤
+│ Frame 1 │ Frame 2 │ Frame 3 │ ... │ Frame N │ Battery Voltage   │
+│ 52 bytes│ 52 bytes│ 52 bytes│     │(max 28) │ 4 bytes (float32) │
+└─────────────────────────────────────────────────────────────────┘
                           │
                           ▼ Zoom into one frame
         ┌─────────────────────────────────────────────────┐
@@ -154,13 +154,13 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
         └─────────────────────────────────────────────────┘
                     │
                     ▼ Zoom into ADC data
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                     ADC Data (48 bytes)                         │
-    ├─────────────────────────────────────────────────────────────────┤
-    │ Ch0   │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ ... │ Ch14  │ Ch15      │
-    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
-    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
-    └─────────────────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────────┐
+    │                     ADC Data (48 bytes)                     │
+    ├─────────────────────────────────────────────────────────────┤
+    │ Ch0   │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ ... │ Ch14  │ Ch15  │
+    │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes│
+    │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit │
+    └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.3 Frame Packing - Why Bundle Multiple Samples?
