@@ -157,7 +157,7 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     ┌─────────────────────────────────────────────────────────────────┐
     │                     ADC Data (48 bytes)                         │
     ├─────────────────────────────────────────────────────────────────┤
-    │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ Ch5   │ ... │ Ch15  │ Ch16      │
+    │ Ch0   │ Ch1   │ Ch2   │ Ch3   │ Ch4   │ ... │ Ch14  │ Ch15      │
     │3 bytes│3 bytes│3 bytes│3 bytes│3 bytes│     │3 bytes│3 bytes    │
     │ 24bit │ 24bit │ 24bit │ 24bit │ 24bit │     │ 24bit │ 24bit     │
     └─────────────────────────────────────────────────────────────────┘
@@ -395,19 +395,19 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 
 ## 5. 🎬 DSP Filter Implementation Details
 
-The board processes incoming signals through three cascaded biquad filters, all running at 160MHz with fixed-point math for consistent performance:
+The board processes incoming signals through a digital filter chain consisting of one FIR filter and three IIR filters, all running at 160MHz with fixed-point math for consistent performance:
 
 ### Filter Chain Architecture
-1. **2-Pole Equalizer (FIR)** → 2. **DC Blocker (IIR)** → 3. **Notch Filters (IIR)**
+1. **FIR Equalizer (7-tap)** → 2. **DC Blocker (IIR)** → 3. **Notch Filters (IIR)**
 
 ### 1. Frequency Response Equalizer
 - **Purpose**: Compensates for the ADS1299's inherent frequency rolloff from its sinc³ decimation filter
-- **Type**: 2-pole equalizer maintaining flat response (≈0 dB) from DC to 0.8×Nyquist
+- **Type**: 7-tap FIR filter maintaining flat response (≈0 dB) from DC to 0.8×Nyquist
 - **Example**: At 250 Hz sampling, provides flat response from 0-100 Hz
 - **Why needed**: Without this, higher EEG frequencies (gamma band) appear artificially attenuated
 
 ### 2. DC Removal Filter  
-- **Type**: 2nd order Butterworth high-pass (no Q factor)
+- **Type**: 2nd order Butterworth high-pass (IIR, no Q factor)
 - **Cutoff options**: 0.5, 1, 2, 4, 8 Hz (selectable via `sys dccutofffreq`)
 - **Behavior**: 
   - Removes electrode drift and DC offsets
@@ -415,7 +415,7 @@ The board processes incoming signals through three cascaded biquad filters, all 
   - Coefficients recalculated on-the-fly for any sampling rate
 
 ### 3. Mains Interference Notch Filters
-- **Configuration**: Two cascaded biquads per frequency
+- **Configuration**: Two cascaded biquads per frequency (4th order total)
 - **Q Factor**: ~35 (very narrow notch)
 - **Attenuation**: -40 dB at target frequencies
 - **Options**: 

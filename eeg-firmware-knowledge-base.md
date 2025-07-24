@@ -101,7 +101,7 @@ DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
 ### Discovery & Keep-Alive Protocol
 - **Beacon**: "MEOW_MEOW" (9 bytes) every 1 second when no peer found
 - **Discovery/Keep-alive**: "WOOF_WOOF" (9 bytes) serves dual purpose
-- **Any packet** refreshes watchdog, including WOOF_WOOF and commands
+- **Watchdog refresh**: Any valid packet refreshes watchdog (WOOF_WOOF, commands) except MEOW_MEOW echoes
 
 ### Timeout Hierarchy
 1. **10s streaming watchdog**: No data → drop STREAMING to IDLE
@@ -216,7 +216,7 @@ Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120]
 ### 2. DC Blocker (2nd order Butterworth IIR)
 - **Cutoffs**: 0.5, 1, 2, 4, 8 Hz (runtime selectable)
 - **Coefficient sets**: 25 (5 sample rates × 5 cutoffs)
-- **Note**: 0.5Hz @ 4kHz can become unstable (resonator behavior)
+- **Note**: 0.5Hz cutoff @ 4kHz sampling can become unstable (resonator behavior)
 
 ### 3. Notch Filters (4th order, cascaded biquads)
 - **50/60 Hz**: Q≈35, -40dB rejection
@@ -271,13 +271,12 @@ void xfer(target, length, txData, rxData) {
 }
 ```
 
-### Daisy-Chain Read Limitation
-**Current**: Can only read from Master
-**Slave read would require**:
-1. CS slave only
-2. Activate master
-3. Push 27 dummy bytes through master
-4. Next 27 bytes = slave data
+### Daisy-Chain Register Reading
+Reading registers from both ADCs simultaneously is implemented via `read_Register_Daisy()`:
+- Uses target 'B' (both chips selected)
+- Sends 30-byte transaction
+- Master register value at byte 3
+- Slave register value at byte 30
 
 ### Daisy-Chain Register Read Protocol
 
@@ -349,7 +348,7 @@ Max 256 bytes per transaction
 
 ### Memory & Queues
 - **Stack sizes**: ADC task 2048B, UDP task 2048B
-- **Queue depth**: 5 packets (dynamically sized based on frame packing)
+- **Queue depth**: 5 slots, each slot size varies by sampling rate
 - **Packet size**: Adaptive (264-1460B based on sampling rate)
 - **Buffer allocation**: Max size (1460B + 4B battery) to handle all rates
 - **Blocking behavior**:
@@ -396,9 +395,6 @@ return (now >= then) ? (now - then) : 0;
 ---
 
 ## 10. Known Issues & Workarounds
-
-### Must Fix
-- **Slave SPI reads** not implemented (daisy-chain complexity)
 
 ### Quirks to Remember
 - **WiFi + ADC2** = instant crash (hardware limitation)

@@ -192,7 +192,7 @@ void NetManager::update(void)
     // the subtraction under-flows and produces 0xFFFFFFFF (-1).  We guard
     // against that by forcing the delta to 0 whenever the clock went “backward”.
     {
-        uint32_t rxDelta = safeTimeDelta(now, _lastRxMs); // wrap-safe and race-safe if TCP/IP interupts and updates _lastRxMs before if condition
+        uint32_t rxDelta = safeTimeDelta(now, _lastRxMs); // wrap-safe and race-safe if TCP/IP interrupts and updates _lastRxMs before if condition
 
         if ((_state == LinkState::STREAMING) && (rxDelta > _timeoutMs))
         {

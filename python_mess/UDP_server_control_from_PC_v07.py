@@ -286,18 +286,18 @@ def main():
     # cmd = f"spi B 3 0x42 0x00 0x{CONFIG_2:02X} "
     # ctrl_sock.sendto(cmd.encode(), (ESP_IP, CTRL_PORT))
     # time.sleep(0.1)
-    flush_udp_buffer(ctrl_sock)
-    ctrl_sock.sendto(b"spi S 3 0x20 0x00 0x00 ", (ESP_IP, CTRL_PORT))
-    data, _ = ctrl_sock.recvfrom(1024)
-    time.sleep(0.1)
-    print("RX <", ' '.join(f'{b:02x}' for b in data))
-    flush_udp_buffer(ctrl_sock)
-    ctrl_sock.sendto(b' '.join([b'spi B 57 0x23 0x00'] + [b'0x00'] * 55), (ESP_IP, CTRL_PORT))
-    time.sleep(0.1)
-    data, _ = ctrl_sock.recvfrom(1024)
-    print("RX <", ' '.join(f'{b:02x}' for b in data))
+    # flush_udp_buffer(ctrl_sock)
+    # ctrl_sock.sendto(b"spi S 3 0x20 0x00 0x00 ", (ESP_IP, CTRL_PORT))
+    # data, _ = ctrl_sock.recvfrom(1024)
+    # time.sleep(0.1)
+    # print("RX <", ' '.join(f'{b:02x}' for b in data))
+    # flush_udp_buffer(ctrl_sock)
+    # ctrl_sock.sendto(b' '.join([b'spi B 57 0x23 0x00'] + [b'0x00'] * 55), (ESP_IP, CTRL_PORT))
+    # time.sleep(0.1)
+    # data, _ = ctrl_sock.recvfrom(1024)
+    # print("RX <", ' '.join(f'{b:02x}' for b in data))
     
-    ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB6 ", (ESP_IP, CTRL_PORT))
+    # ctrl_sock.sendto(b"spi M 3 0x41 0x00 0xB6 ", (ESP_IP, CTRL_PORT))
     CHANNEL_CONF = 0x08
     for reg in range(0x45, 0x4D):
         cmd = f"spi B 3 0x{reg:02X} 0x00 0x{CHANNEL_CONF:02X} "
