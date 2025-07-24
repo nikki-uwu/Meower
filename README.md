@@ -3,7 +3,7 @@
 *(for anyone who would think i removed markings - no :3, that's just the angle, laziness, low light and iphone 12 :3)*
 ## 🧠 Project Overview
 
-A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi (maximum suported ADC sample rate for 16 channels is 4000 Hz) - just power on, connect, and start recording.
+A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi (maximum supported ADC sample rate for 16 channels is 4000 Hz) - just power on, connect, and start recording.
 
 **Note**: The board is currently preconfigured for VRChat BCI use. If you have questions (oh silly woofer, why are you here, what are you doing, run :3), just ask - I'll help set up everything. It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later... maybe, who knows, not me for sure :3
 
@@ -12,7 +12,7 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only**
 
 ### Performance & Noise Considerations
-Even from a pure performance standpoint, battery operation is essential - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. Always disconnect USB after configuration for research-quality recordings.
+Even from a pure performance standpoint, battery operation is important - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. The cable itself can act as an antenna picking up 50/60 Hz noise if it's long enough. Always disconnect USB after configuration for quality recordings.
 
 ## 📚 What's in This Guide
 
@@ -20,7 +20,7 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 |---------|-------------|-------------|
 | **1. ⚡ Quick Start** | 1.1 What You'll Need<br>1.2 Configure WiFi Settings<br>1.3 LED Status Patterns | Get data flowing in under 10 minutes |
 | **2. 🔧 Building From Source** | 2.1 Prerequisites<br>2.2 Build Steps<br>2.3 Troubleshooting Upload Issues | Compile and upload custom firmware |
-| **3. 📊 Data Format** | 3.1 Channel Numbering<br>3.2 UDP Packet Structure<br>3.3 Why Single UDP Datagram?<br>3.4 Adaptive Frame Packing<br>3.5 Basic Data Parsing<br>3.6 Data Conversion Reference | Channel mapping and packet structure |
+| **3. 📊 Data Format** | 3.1 Channel Numbering<br>3.2 UDP Packet Structure<br>3.3 Frame Packing - Why Bundle Multiple Samples?<br>3.4 Single Datagram Design - Why Limit to 28 Frames?<br>3.5 Basic Data Parsing<br>3.6 Data Conversion Reference | Channel mapping and packet structure |
 | **4. 🎛️ Configuration** | 4.1 Network Ports & Communication<br>4.2 Discovery & Connection Flow<br>4.3 Command Reference<br>4.4 Reset to Setup Mode | Commands and settings |
 | **5. 🎬 DSP Filter Details** | 5.1 Filter Chain Architecture<br>5.2 Frequency Response Equalizer<br>5.3 DC Removal Filter<br>5.4 Mains Interference Notch Filters<br>5.5 Filter Coefficient Generation<br>5.6 Important IIR Filter Behavior | Digital signal processing implementation |
 | **6. 🔬 Raw SPI Access** | 6.1 Command Format<br>6.2 Register Reading in Daisy-Chain Mode<br>6.3 Common Examples<br>6.4 Daisy-Chain Register Reading<br>6.5 Important Notes | Direct ADC communication |
@@ -163,59 +163,57 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.3 Why Single UDP Datagram?
+### 3.3 Frame Packing - Why Bundle Multiple Samples?
 
-The board packs multiple frames into one UDP packet for critical performance reasons:
+The board bundles multiple ADC data frames into each UDP packet for several practical reasons:
 
-1. **Latency Optimization**: Each UDP packet has overhead (headers, kernel processing). Sending 28 frames in one packet instead of 28 individual packets reduces this overhead by 28x.
+1. **Reduces load on network and CPU** - Nobody needs to handle 4000 packets per second. Your computer doesn't need to parse that fast, the network doesn't need that traffic.
 
-2. **Network Efficiency**: 
-   - Single packet: 1472 bytes payload + 28 bytes headers = 1500 bytes total
-   - 28 individual packets: 1456 bytes payload + 784 bytes headers = 2240 bytes total
-   - That's 49% more bandwidth wasted on headers!
+2. **ESP32 packet rate limitation** - Testing shows the ESP32 can handle up to ~166 UDP packets per second with this firmware. Beyond that, packets drop.
 
-3. **Atomic Delivery**: UDP delivers the entire datagram or nothing. You either get all 28 frames intact or none - no partial data corruption.
+3. **Saves battery** - Fewer radio transmissions = longer battery life
 
-4. **Jitter Reduction**: Sending one packet every 56ms (at 500Hz) creates more consistent timing than 28 packets with microsecond gaps.
+4. **Stable network behavior** - Consistent 50 packets/second is much easier to handle than thousands
 
-5. **MTU Compliance**: At 1460 bytes max, we stay under the standard Ethernet MTU of 1500 bytes, avoiding fragmentation which can cause packet loss.
+5. **Enables high sampling rates** - 4000 Hz sampling would be impossible without packing (would need 4000 packets/sec!)
 
-**Technical Details**:
-- **MTU Calculation**: Ethernet MTU (1500) - IP header (20) - UDP header (8) = 1472 bytes usable
-- **Max frames**: (1472 - 4) / 52 = 28 frames maximum per packet
-- **Frames per packet**: Adaptive (5-28 based on sampling rate, see table below)
-- **Timestamp units**: Hardware timestamp counts in 8 microsecond increments
-- **Byte order** (verified from source code): 
-  - Channel data: **Big-endian** (MSB first) - ADS1299 outputs this way
-  - Timestamp: **Little-endian** - ESP32 native format for efficiency  
-  - Battery: **Little-endian** (IEEE 754 float) - ESP32 native format
+**How the board packs frames:**
 
-### 3.4 Adaptive Frame Packing
+The board tries to maintain 50 packets per second when possible:
 
-The board intelligently adjusts packet size to maintain approximately 50 packets per second (FPS) over WiFi when possible. This provides consistent network behavior across different sampling rates:
+| Sampling Rate | Frames Packed | WiFi Packets/Second |
+|--------------|---------------|---------------------|
+| 250 Hz | 5 frames | 50 packets/sec |
+| 500 Hz | 10 frames | 50 packets/sec |
+| 1000 Hz | 20 frames | 50 packets/sec |
+| 2000 Hz | 28 frames* | 71 packets/sec |
+| 4000 Hz | 28 frames* | 143 packets/sec |
 
-| Sampling Rate | Frames Packed | WiFi FPS | Latency |
-|--------------|---------------|----------|---------|
-| 250 Hz | 5 frames | 50 FPS | 20 ms |
-| 500 Hz | 10 frames | 50 FPS | 20 ms |
-| 1000 Hz | 20 frames | 50 FPS | 20 ms |
-| 2000 Hz | 28 frames* | 71 FPS | 14 ms |
-| 4000 Hz | 28 frames* | 143 FPS | 7 ms |
+*At 2 kHz and above, the board packs the maximum 28 frames to stay within the single datagram limit
 
-*Maximum packing reached due to MTU limit (1472 bytes)
+### 3.4 Single Datagram Design - Why Limit to 28 Frames?
 
-**Why Pack Frames?**
-1. **WiFi Timing**: ESP32 requires ~6ms between UDP packets (max ~166 packets/second)
-2. **Network Efficiency**: Reduces overhead by up to 28x
-3. **Impossible Without Packing**: 4000 Hz = 4000 packets/second (24x over WiFi limit!)
+We intentionally limit frame packing to keep all data within a single UDP datagram (max 1472 bytes). Here's why:
 
-This adaptive approach ensures:
-- Consistent 50 FPS for sampling rates up to 1000 Hz
-- Minimal latency at higher rates while respecting MTU limits
-- Optimal network utilization without fragmentation
-- Board automatically adjusts when sampling rate changes
+**1. Network Efficiency** - Every UDP packet has overhead regardless of payload size. Sending 10 bytes costs almost the same network resources as sending 1000 bytes. By packing frames up to the datagram limit, we use network bandwidth efficiently.
 
-**Advanced Configuration**: The board automatically adapts frame packing based on sampling rate. Other parameters can be changed in `defines.h` (ports, timing, etc.) but think 10 times before changing anything! The board starts at 250 Hz with 5-frame packing (50 FPS) by default.
+**2. Simple Implementation** - Both sides benefit:
+   - ESP32: Just one `send()` call with the complete packet
+   - PC: Just one `recv()` call to get all the data
+   - No complex code to split/reassemble packets
+
+**3. MTU Compliance** - Network routers have a size limit (MTU = 1500 bytes). Staying under this means:
+   - No fragmentation (splitting by routers)
+   - No reassembly needed
+   - Lower chance of packet loss
+
+**Technical Calculation**:
+- Maximum usable UDP payload: 1472 bytes (1500 - 28 bytes of headers)
+- Each frame: 52 bytes
+- Battery voltage: 4 bytes
+- Maximum frames: (1472 - 4) / 52 = 28 frames
+
+**Advanced Configuration**: The board automatically adapts frame packing based on sampling rate. The 50 packets/second target is a sweet spot - fast enough for real-time display, slow enough for stable operation. Other parameters can be changed in `defines.h` (ports, timing, etc.) but think 10 times before changing anything! The board starts at 250 Hz with 5-frame packing (50 packets/sec) by default.
 
 ### 3.5 Basic Data Parsing
 
@@ -531,7 +529,7 @@ When reading a register in daisy-chain mode:
 What we send (30 bytes):
 ┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
 │ 0  │ 1  │ 2  │ 3  │ 4  │ 5  │ 6  │ 7  │ 8  │ 9  │ 10 │ 11 │ 12 │ 13 │ 14 │ 15 │ 16 │ 17 │ 18 │ 19 │ 20 │ 21 │ 22 │ 23 │ 24 │ 25 │ 26 │ 27 │ 28 │ 29 │
-├────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+├────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
 │RREG│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│0x00│
 └────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
  0x2X                                     (X = register address, e.g., 0x21 for CONFIG1)
@@ -588,7 +586,6 @@ Response: 30 bytes where:
 - **Battery Life**: 10+ hours with 1100mAh LiPo
 - **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
 - **WiFi Range**: 30m typical indoor
-- **Network Latency**: <10ms typical
 
 ## 8. 🛠️ Troubleshooting
 

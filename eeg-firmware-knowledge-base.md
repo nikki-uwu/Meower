@@ -75,7 +75,7 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 9. Wait 50ms for slave clock lock
 10. Enable test signal (1Hz square wave)
 11. Switch to 16 MHz for normal operation
-12. Board initializes at 250 Hz with 5-frame packing (50 FPS)
+12. Board initializes at 250 Hz with 5-frame packing (50 packets/sec)
 
 ### Readiness Check
 ```c
@@ -162,7 +162,7 @@ Big-endian 24-bit    8µs timer units
 
 ### Adaptive Packet Sizing
 
-The firmware dynamically adjusts frames per packet to target 50 FPS over WiFi:
+The firmware dynamically adjusts frames per packet to target 50 packets/second over WiFi:
 
 **Hardware Constraints**:
 1. **MTU Limit**: 1472 bytes usable → max 28 frames (28*52+4=1460 bytes)
@@ -181,11 +181,11 @@ The firmware dynamically adjusts frames per packet to target 50 FPS over WiFi:
 **Packing Strategy**:
 | Rate | Frames | Result |
 |------|--------|--------|
-| 250 Hz | 5 | 50 FPS |
-| 500 Hz | 10 | 50 FPS |
-| 1000 Hz | 20 | 50 FPS |
-| 2000 Hz | 28 | 71 FPS (MTU limit) |
-| 4000 Hz | 28 | 143 FPS (MTU limit) |
+| 250 Hz | 5 | 50 packets/sec |
+| 500 Hz | 10 | 50 packets/sec |
+| 1000 Hz | 20 | 50 packets/sec |
+| 2000 Hz | 28 | 71 packets/sec (MTU limit) |
+| 4000 Hz | 28 | 143 packets/sec (MTU limit) |
 
 **Why This Matters**:
 - 250 Hz unpacked = 250 pkt/s → WiFi overload
