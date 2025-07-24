@@ -15,10 +15,6 @@ void continuous_mode_start_stop(uint8_t on_off)
 {
     if (on_off == HIGH) // Start continuous mode
     {
-        // Safe SPI transaction (2 MHz for config then back to 16 MHz)
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_COMMAND_CLOCK);
-
         // Before any start of the continuous we must check board Sample Rate
         // which is at Config 1 which is to read is 0x21
         uint8_t tx_mex[3] = {0x21, 0x00, 0x00};
@@ -35,12 +31,11 @@ void continuous_mode_start_stop(uint8_t on_off)
             case 2: g_selectSamplingFreq = 4; break; // 4000 Hz
         }
 
-
         // Update adaptive frame packing based on sampling rate
         // Goal: Maintain ~50 packets/second when possible, respect WiFi timing limits
         g_framesPerPacket = FRAMES_PER_PACKET_LUT[g_selectSamplingFreq]; // How many 52-byte frames to pack
-        g_bytesPerPacket = ADC_FULL_FRAME_SIZE * g_framesPerPacket;      // Total ADC data bytes (frames * 52)
-        g_udpPacketBytes = g_bytesPerPacket + Battery_Sense::DATA_SIZE;  // Final UDP payload size (ADC + 4-byte battery)
+        g_bytesPerPacket  = ADC_FULL_FRAME_SIZE * g_framesPerPacket;     // Total ADC data bytes (frames * 52)
+        g_udpPacketBytes  = g_bytesPerPacket + Battery_Sense::DATA_SIZE; // Final UDP payload size (ADC + 4-byte battery)
 
         // Log the configuration change
         // Formula: actual_sample_rate / frames_per_packet = packets_per_second
@@ -57,7 +52,7 @@ void continuous_mode_start_stop(uint8_t on_off)
         uint8_t RDATAC_mes = 0x10;
         xfer('B', 1u, &RDATAC_mes, rx_mes); // Send RDATAC
 
-        // Back to fast clock
+        // Back to fast SPI clock
         spiTransaction_OFF();
         spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
 
@@ -66,6 +61,10 @@ void continuous_mode_start_stop(uint8_t on_off)
     }
     else // Otherwise stop
     {
+        // Switch SPI clock to command clock speeds, which should be 2 MHz (maybe 4) be default
+        spiTransaction_OFF();
+        spiTransaction_ON(SPI_COMMAND_CLOCK);
+
         // Prepare SDATAC message and empty holder for receiving
         uint8_t SDATAC_mes = 0x11;
         uint8_t rx_mes     = 0x00; // just empty message, we don't need any response here
@@ -73,11 +72,7 @@ void continuous_mode_start_stop(uint8_t on_off)
         // After SDATAC message we must wait 4 clocks, but since we have a small
         // delay before and after reading in xfer function we can ignore it
         // Safe SPI transaction (2 MHz for config then back to 16 MHz)
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_COMMAND_CLOCK);
         xfer('B', 1u, &SDATAC_mes, &rx_mes);
-        spiTransaction_OFF();
-        spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
 
         // Turn OFF start signal (pull it DOWN)
         digitalWrite(PIN_START, on_off);
@@ -166,7 +161,6 @@ void BootCheck::update()
 // ADCs will be reset to default state with sync between them, internal ref ON, 0 gain, 500 FPS and no bias.
 // Sequence:
 // - Set continuous mode flag to False, because we are performing full reset
-// - Reset SPI clock to 2 MHz. We will reset chip only at 2 MHz clock, because it works unstable if we forse it to work at 8 right away. So we full reset first with low speed and only then push 4 Mhz or higher
 // - Setting digital pins to low as it was asked in datasheet before reset
 // - Setting PWDN and RESET low and then high to power up the chip (and keep it high, as requested).
 // - Waiting for the power-up stabilization time.
@@ -185,10 +179,6 @@ void ads1299_full_reset()
 
     // Make sure continuous Mode is OFF, because we are doing full reset
     continuous_mode_start_stop(LOW);
-
-    // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
-    spiTransaction_OFF();                 // stop SPI
-    spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
     // Based on datasheet all CS and START (it says all digital signals) should go LOW
     // Page 62, check diagram
@@ -309,20 +299,12 @@ void ads1299_full_reset()
         // wait for 1 ms
         delay(1);
     }
-
-    // Reconfigure SPI frequency to working one
-    spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start at normal working frequency (most stable i've seen is 16 MHz)
 }
 
 void BCI_preset()
 {
     // Make sure continuous Mode is OFF, because we are doing BCI preset
     continuous_mode_start_stop(LOW);
-
-    // Stop SPI if it was running and start again at 2 MHz clock. Then we will stop it again and set working speed
-    spiTransaction_OFF();                 // stop SPI
-    spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
     // CHANNELS CONFIG
     // Set all channels to SRB2 mode (all positive are short to eachother) with 2 gain
@@ -359,10 +341,6 @@ void BCI_preset()
         const uint8_t Slave_conf_3[3u] = {0x43, 0x00, 0xE8};
         xfer('S', 3u, Slave_conf_3, rx_mes);
     }
-
-    // Reconfigure SPI frequency to working one
-    spiTransaction_OFF();                          // stop SPI
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start and normal working frequency (most stable i've seen is 16 MHz)
 }
 
 // The ADS1299 ID register (0x00) is always accessible immediately after power-up, even before any other configuration.
@@ -370,10 +348,6 @@ void wait_until_ads1299_is_ready()
 {
    // Make sure continuous mode is OFF before checking ID - do this once outside loop
    continuous_mode_start_stop(LOW);
-
-   // Safe SPI transaction (2 MHz for config)
-   spiTransaction_OFF();                 // stop SPI
-   spiTransaction_ON(SPI_COMMAND_CLOCK); // start at 2 MHz
 
    // Debug counter for tracking attempts
    uint32_t attempt_count = 0;
@@ -405,10 +379,6 @@ void wait_until_ads1299_is_ready()
        // Small delay before next attempt to avoid flooding the bus
        delay(10); // 10 ms between attempts
    }
-
-   // Reconfigure SPI frequency to working one
-   spiTransaction_OFF();                          // stop SPI
-   spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // start at normal working frequency (16 MHz)
 }
 
 
@@ -493,19 +463,10 @@ RegValues read_Register_Daisy(uint8_t reg_addr)
     tx[1] = 0x00;             // Read 1 register (offset = 0)
     // tx[2-29] remain 0x00 - just clock pulses to retrieve data
     
-    // CRITICAL: Must use slower clock for register operations
-    // ADS1299 requires 2 MHz max during configuration
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_COMMAND_CLOCK);
-    
     // CRITICAL: Target MUST be 'B' (both) in daisy-chain mode!
     // If we only select one chip, the chain breaks and we get garbage
     xfer('B', 30, tx, rx);
-    
-    // Return to normal speed for ADC data operations
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
-    
+
     // Parse the response:
     // In daisy-chain, data arrives in this order:
     // [Master 27 bytes][Slave 27 bytes]
