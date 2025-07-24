@@ -57,6 +57,49 @@ static inline char *next_tok(char **ctx)
     return strtok_r(nullptr, " \r\n", ctx);
 }
 
+// Register Read-Modify-Write Helper
+// Reads a register from both ADCs, modifies specific bits, writes back
+// Returns true if successful, false if verification failed
+static bool modify_register_bits(uint8_t reg_addr, uint8_t mask, uint8_t new_bits, 
+                                const char* reg_name = nullptr)
+{
+    // Read current values
+    RegValues current = read_Register_Daisy(reg_addr);
+    
+    if (reg_name)
+    {
+        Debug.log("Current %s - Master: 0x%02X, Slave: 0x%02X", 
+                  reg_name, current.master_reg_byte, current.slave_reg_byte);
+    }
+
+    // Update bits (preserve bits not in mask)
+    uint8_t new_master = (current.master_reg_byte & ~mask) | (new_bits & mask);
+    uint8_t new_slave  = (current.slave_reg_byte  & ~mask) | (new_bits & mask);
+
+    // Write to Master
+    uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg_addr), 0x00, new_master};
+    uint8_t rx[3] = {0};
+    xfer('M', 3, tx, rx);
+    
+    // Write to Slave  
+    tx[2] = new_slave;
+    xfer('S', 3, tx, rx);
+
+    // Verify
+    RegValues verify = read_Register_Daisy(reg_addr);
+    bool success = (verify.master_reg_byte == new_master) && 
+                   (verify.slave_reg_byte == new_slave);
+
+    if (reg_name)
+    {
+        Debug.log("Updated %s - Master: 0x%02X, Slave: 0x%02X %s", 
+                  reg_name, verify.master_reg_byte, verify.slave_reg_byte,
+                  success ? "[OK]" : "[FAILED]");
+    }
+
+    return success;
+}
+
 static void send_reply(const void* data, size_t len)
 {
     net.sendCtrl(data, len);
@@ -155,12 +198,8 @@ static void cmd_SPI_SR(char **args, const char *orig)
         tx[i] = (uint8_t) strtoul(tok, nullptr, 0);
     }
 
-    // Safe SPI transaction (2 MHz for config then back to 16 MHz)
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_COMMAND_CLOCK);
+    // SPI transaction
     xfer(target, len, tx, rx);
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK);
 
     // Echo the response
     send_reply(rx, len);
@@ -241,11 +280,7 @@ void handle_SPI(char **ctx, const char * /*orig*/)
     // --------------------------------------------------------------------
     // 4. TRANSACTION  (reuse existing SPI helper)
     // --------------------------------------------------------------------
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_COMMAND_CLOCK);          // 2 MHz for config
     xfer(target, len, tx, rx);                   // full-duplex exchange
-    spiTransaction_OFF();
-    spiTransaction_ON(SPI_NORMAL_OPERATION_CLOCK); // back to 8 MHz
 
     // --------------------------------------------------------------------
     // 5. REPLY - echo RX data to PC
@@ -475,13 +510,87 @@ void handle_SYS(char **ctx, const char * /*orig*/)
 
 
 
-// FAMILY: USR  (prefix "usr")  - placeholder
+// FAMILY: USR  (prefix "usr") - User-level commands
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 void handle_USR(char **ctx, const char * /*orig*/)
 {
-    (void)ctx;
-    // TODO: implement user-level commands
+    char *cmd = next_tok(ctx);
+    if (!cmd)
+    {
+        send_error("usr - missing command (see docs)");
+        return;
+    }
+
+    // --------------------------------------------------------------------
+    // Set Sampling Frequency (usr set_sampling_freq XXXX)
+    // Acceptable: 250, 500, 1000, 2000, 4000 Hz
+    // Maps to CONFIG1 bits [2:0]: 110, 101, 100, 011, 010
+    // Reference: ADS1299 datasheet, page 46 "CONFIG1: Configuration Register 1"
+    // Bits [2:0] are DR2:DR1:DR0 (Data Rate bits)
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "set_sampling_freq"))
+    {
+        char *tok = next_tok(ctx);
+        if (!tok)
+        {
+            send_error("set_sampling_freq - missing value (250,500,1000,2000,4000)");
+            return;
+        }
+        
+        int freq = atoi(tok);
+        uint8_t dr_bits = 0xFF; // Invalid marker
+        
+        // Map frequency to DR bits (CONFIG1 register bits [2:0])
+        // From ADS1299 datasheet page 46, Table 11:
+        // DR2:DR1:DR0 | fMOD | fDATA 
+        // 110 (0x06)  | fCLK/4  | 250 Hz
+        // 101 (0x05)  | fCLK/8  | 500 Hz
+        // 100 (0x04)  | fCLK/16 | 1000 Hz
+        // 011 (0x03)  | fCLK/32 | 2000 Hz
+        // 010 (0x02)  | fCLK/64 | 4000 Hz
+        switch (freq)
+        {
+            case  250: dr_bits = 0x06; break; // 110
+            case  500: dr_bits = 0x05; break; // 101
+            case 1000: dr_bits = 0x04; break; // 100
+            case 2000: dr_bits = 0x03; break; // 011
+            case 4000: dr_bits = 0x02; break; // 010
+            default:
+                char err_msg[128];
+                snprintf(err_msg, sizeof(err_msg), 
+                    "set_sampling_freq - got '%d', allowed only 250,500,1000,2000,4000", freq);
+                send_error(err_msg);
+                return;
+        }
+
+        // Stop continuous mode first
+        continuous_mode_start_stop(LOW);
+        Debug.log("CMD set_sampling_freq - stopped continuous mode");
+
+        // Use helper to update CONFIG1 register bits [2:0]
+        bool success = modify_register_bits(0x01, 0x07, dr_bits, "CONFIG1");
+
+        if (success)
+        {
+            // Send success message
+            char msg[64];
+            snprintf(msg, sizeof(msg), "OK: sampling_freq set to %d Hz", freq);
+            send_reply_line(msg);
+        }
+        else
+        {
+            send_error("set_sampling_freq - failed to update CONFIG1 register");
+        }
+        return;
+    }
+
+    // Unknown USR command
+    // --------------------------------------------------------------------
+    char out[256];
+    snprintf(out, sizeof(out),
+        "usr - got '%s', expected (set_sampling_freq)", cmd);
+    send_error(out);
 }
 
 
@@ -529,4 +638,3 @@ void parse_and_execute_command(void)
     // 5. Unknown command -> send error
     send_error("got unknown family, expected (spi|sys|usr)");
 }
-

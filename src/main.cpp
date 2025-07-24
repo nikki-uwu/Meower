@@ -432,8 +432,8 @@ void setup()
     // GET RID OF TRI-STATE FOR MISO, so signal does not decay slowly if last bit was equal to 1
     pinMode(PIN_MISO, INPUT_PULLDOWN);
 
-    // Set SPI clock to default commands speed - 2 MHz
-    spiTransaction_ON(SPI_COMMAND_CLOCK);
+    // Set SPI clock to 2 MHz for commands and switch off continuous mode
+    continuous_mode_start_stop(LOW);
 
     // Configure LED pin
     pinMode(PIN_LED, OUTPUT);          // make it an output
