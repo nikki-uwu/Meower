@@ -622,5 +622,5 @@ Response: 30 bytes where:
 7. Ensure battery powered during use
 
 ---
-
-*Built with ❤️ for the BCI community*
+### Previous Versions :3
+![Ship with markings](images/Previous_versions.jpg)
