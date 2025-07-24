@@ -19,17 +19,50 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 | Section | Description |
 |---------|-------------|
 | **1. ⚡ Quick Start** | Get data flowing in under 10 minutes |
+| 1.1 | What You'll Need |
+| 1.2 | Configure WiFi Settings |
+| 1.3 | LED Status Patterns |
 | **2. 🔧 Building From Source** | Compile and upload custom firmware |
+| 2.1 | Prerequisites |
+| 2.2 | Build Steps |
+| 2.3 | Troubleshooting Upload Issues |
 | **3. 📊 Data Format** | Channel mapping and packet structure |
+| 3.1 | Channel Numbering |
+| 3.2 | UDP Packet Structure |
+| 3.3 | Why Single UDP Datagram? |
+| 3.4 | Adaptive Frame Packing |
+| 3.5 | Basic Data Parsing |
+| 3.6 | Data Conversion Reference |
 | **4. 🎛️ Configuration** | Commands and settings |
+| 4.1 | Network Ports & Communication |
+| 4.2 | Discovery & Connection Flow |
+| 4.3 | Command Reference |
+| 4.4 | Reset to Setup Mode |
 | **5. 🎬 DSP Filter Details** | Digital signal processing implementation |
+| 5.1 | Filter Chain Architecture |
+| 5.2 | Frequency Response Equalizer |
+| 5.3 | DC Removal Filter |
+| 5.4 | Mains Interference Notch Filters |
+| 5.5 | Filter Coefficient Generation |
+| 5.6 | Important IIR Filter Behavior |
 | **6. 🔬 Raw SPI Access** | Direct ADC communication |
+| 6.1 | Command Format |
+| 6.2 | Register Reading in Daisy-Chain Mode |
+| 6.3 | Common Examples |
+| 6.4 | Daisy-Chain Register Reading |
+| 6.5 | Important Notes |
 | **7. 📈 Specifications** | Technical details and performance |
+| 7.1 | Hardware |
+| 7.2 | Performance |
 | **8. 🛠️ Troubleshooting** | Common issues and solutions |
+| 8.1 | Board Not Detected |
+| 8.2 | Can't Connect to WiFi |
+| 8.3 | No Data Received |
+| 8.4 | Noisy or Bad Signals |
 
 ## 1. ⚡ Quick Start
 
-### What You'll Need
+### 1.1 What You'll Need
 - Meower board (this board)
 - USB-C cable (data capable, not charge-only)
 - 3.7V LiPo battery (optional, 1100mAh gives 10+ hours)
@@ -37,7 +70,7 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 - 2.4GHz WiFi network (or use serial configuration)
 - No drivers needed - ESP32-C3 has built-in USB!
 
-### Configure WiFi Settings (Choose One Method)
+### 1.2 Configure WiFi Settings (Choose One Method)
 
 #### Method 1: WiFi Access Point
 1. **Power on** the board
@@ -71,7 +104,7 @@ The board will automatically discover your PC through UDP broadcast messages - n
 - If board doesn't respond to network commands, connect serial to update settings
 - For verbose debug output, set `#define SERIAL_DEBUG 1` in `defines.h`
 
-### LED Status Patterns
+### 1.3 LED Status Patterns
 After configuration, the LED shows board status:
 - **Rapid flashing**: Network setup mode (Access Point active)
 - **3 blinks**: Cannot connect to WiFi
@@ -81,14 +114,14 @@ After configuration, the LED shows board status:
 
 ## 2. 🔧 Building From Source
 
-### Prerequisites
+### 2.1 Prerequisites
 | Software | Version | Download |
 |----------|---------|----------|
 | Git | Latest | [git-scm.com](https://git-scm.com) |
 | VS Code | Latest | [code.visualstudio.com](https://code.visualstudio.com) |
 | PlatformIO | Extension | Install within VS Code |
 
-### Build Steps
+### 2.2 Build Steps
 1. **Clone the repository** to your local machine
 2. **Open VS Code**
 3. **Click on PlatformIO extension** in the left sidebar (default layout)
@@ -104,7 +137,7 @@ After configuration, the LED shows board status:
 10. **Click arrow (→)** to build and upload
     - Or click checkmark (✓) to build first, then arrow
 
-### Troubleshooting Upload Issues
+### 2.3 Troubleshooting Upload Issues
 - **Other USB devices can interfere**: Disconnect USB audio interfaces, cameras, USB hubs, etc.
 - **Ensure no other programs are using the COM port**: Close any serial terminals, Arduino IDE, etc.
 - **Windows "Restart apps" setting**: Go to Settings → Accounts → Sign-in options → Turn OFF "Use my sign-in info to automatically finish setting up after an update or restart" - this can keep apps running in background
@@ -115,7 +148,7 @@ After configuration, the LED shows board status:
 
 ## 3. 📊 Data Format & Channel Mapping
 
-### Channel Numbering
+### 3.1 Channel Numbering
 
 [Channel mapping diagram - to be added]
 
@@ -133,7 +166,7 @@ After configuration, the LED shows board status:
 - Ch6 → T3, Ch14 → T4
 - Ch7 → T5, Ch15 → T6
 
-### UDP Packet Structure
+### 3.2 UDP Packet Structure
 
 The board always sends data in a single UDP datagram (no fragmentation). You can safely read with a 1500-byte buffer.
 
@@ -163,7 +196,7 @@ The board always sends data in a single UDP datagram (no fragmentation). You can
     └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Why Single UDP Datagram?
+### 3.3 Why Single UDP Datagram?
 
 The board packs multiple frames into one UDP packet for critical performance reasons:
 
@@ -190,7 +223,7 @@ The board packs multiple frames into one UDP packet for critical performance rea
   - Timestamp: **Little-endian** - ESP32 native format for efficiency  
   - Battery: **Little-endian** (IEEE 754 float) - ESP32 native format
 
-### Adaptive Frame Packing
+### 3.4 Adaptive Frame Packing
 
 The board intelligently adjusts packet size to maintain approximately 50 packets per second (FPS) over WiFi when possible. This provides consistent network behavior across different sampling rates:
 
@@ -217,7 +250,7 @@ This adaptive approach ensures:
 
 **Advanced Configuration**: The board automatically adapts frame packing based on sampling rate. Other parameters can be changed in `defines.h` (ports, timing, etc.) but think 10 times before changing anything! The board starts at 250 Hz with 5-frame packing (50 FPS) by default.
 
-### Basic Data Parsing
+### 3.5 Basic Data Parsing
 
 The 48-byte ADC data contains 16 channels, each using 3 bytes (24 bits) in big-endian format:
 
@@ -293,7 +326,7 @@ int32_t parse_24bit_sample(uint8_t b0, uint8_t b1, uint8_t b2)
 
 For complete UDP datagram parsing including frame validation and battery extraction, see the `python/` folder which contains full working examples.
 
-### Data Conversion Reference
+### 3.6 Data Conversion Reference
 
 The ADS1299 outputs 24-bit signed values. To convert to physical units:
 
@@ -325,13 +358,13 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 
 ## 4. 🎛️ Configuration & Control
 
-### Network Ports & Communication
+### 4.1 Network Ports & Communication
 - **Control Port**: 5000 (UDP) - Commands and configuration (default, configurable)
 - **Data Port**: 5001 (UDP) - EEG data stream (default, configurable)
 - **Keep-Alive**: PC sends "WOOF_WOOF" every <10 seconds to maintain connection
 - **Connection Timeout**: Board stops streaming after ~10 seconds without any packets
 
-### Discovery & Connection Flow
+### 4.2 Discovery & Connection Flow
 
 1. **Board powers on** → Connects to configured WiFi network
 2. **Broadcasts "MEOW_MEOW"** on UDP port 5000 every second
@@ -340,7 +373,7 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 5. **Ready to stream** → Send `sys start_cnt` to begin
 6. **Maintain connection** → PC sends "WOOF_WOOF" keepalive every <10 seconds
 
-### Command Reference
+### 4.3 Command Reference
 Send these commands to the control port as UTF-8 strings:
 
 | Command | Description | Example |
@@ -376,7 +409,7 @@ Send these commands to the control port as UTF-8 strings:
 - SPI commands: M=Master ADC, S=Slave ADC, B=Both ADCs
 - Board automatically adjusts frame packing when sampling rate changes
 
-### Reset to Setup Mode
+### 4.4 Reset to Setup Mode
 Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enters setup mode:
 
 1. Turn ON briefly
@@ -397,16 +430,16 @@ Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enter
 
 The board processes incoming signals through a digital filter chain consisting of one FIR filter and three IIR filters, all running at 160MHz with fixed-point math for consistent performance:
 
-### Filter Chain Architecture
+### 5.1 Filter Chain Architecture
 1. **FIR Equalizer (7-tap)** → 2. **DC Blocker (IIR)** → 3. **Notch Filters (IIR)**
 
-### 1. Frequency Response Equalizer
+### 5.2 Frequency Response Equalizer
 - **Purpose**: Compensates for the ADS1299's inherent frequency rolloff from its sinc³ decimation filter
 - **Type**: 7-tap FIR filter maintaining flat response (≈0 dB) from DC to 0.8×Nyquist
 - **Example**: At 250 Hz sampling, provides flat response from 0-100 Hz
 - **Why needed**: Without this, higher EEG frequencies (gamma band) appear artificially attenuated
 
-### 2. DC Removal Filter  
+### 5.3 DC Removal Filter  
 - **Type**: 2nd order Butterworth high-pass (IIR, no Q factor)
 - **Cutoff options**: 0.5, 1, 2, 4, 8 Hz (selectable via `sys dccutofffreq`)
 - **Behavior**: 
@@ -414,7 +447,7 @@ The board processes incoming signals through a digital filter chain consisting o
   - Preserves fast transients (blinks, eye movements) as sharp spikes instead of long DC steps
   - Coefficients recalculated on-the-fly for any sampling rate
 
-### 3. Mains Interference Notch Filters
+### 5.4 Mains Interference Notch Filters
 - **Configuration**: Two cascaded biquads per frequency (4th order total)
 - **Q Factor**: ~35 (very narrow notch)
 - **Attenuation**: -40 dB at target frequencies
@@ -423,14 +456,14 @@ The board processes incoming signals through a digital filter chain consisting o
   - 60 Hz + 120 Hz (Americas)
 - **Purpose**: Real-time recording cleanup; heavier processing can be done offline
 
-### Filter Coefficient Generation
+### 5.5 Filter Coefficient Generation
 All filter coefficients are pre-calculated by a Python script (included in source) that:
 - Generates optimal coefficients for each sampling rate (250-4000 Hz)
 - Scales to 32-bit fixed-point for integer math
 - Ensures unity gain at passband to prevent clipping
 - Can be regenerated if you modify fs, fc, or Q parameters
 
-### Important IIR Filter Behavior
+### 5.6 Important IIR Filter Behavior
 **Spike Recovery**: IIR filters can ring when hit with large transients (like electrode pops or movement artifacts). If you see:
 - Phantom 50/60 Hz oscillations after a spike
 - Slowly drifting baseline after movement
@@ -441,7 +474,7 @@ All filter coefficients are pre-calculated by a Python script (included in sourc
 
 Direct SPI access allows low-level communication with the ADS1299 chips via WiFi UDP commands. Useful for custom configurations or debugging.
 
-### Command Format
+### 6.1 Command Format
 ```
 spi [target] [length] [byte0] [byte1] ... [byteN]
 ```
@@ -456,7 +489,7 @@ spi [target] [length] [byte0] [byte1] ... [byteN]
 
 **Response**: Board returns the same number of bytes received from SPI
 
-### Register Reading in Daisy-Chain Mode
+### 6.2 Register Reading in Daisy-Chain Mode
 
 The dual ADS1299 chips are configured in daisy-chain mode with separate chip selects. This means:
 - **Writing registers**: Works normally - you can write to Master, Slave, or Both independently
@@ -470,7 +503,7 @@ The simplified 'spi' command returns only data from the Master ADC. However, the
 
 If you're implementing your own register reads via raw SPI commands, treat it like ADC sample reading in daisy-chain mode where data flows through: Slave → Master → ESP32. See the detailed protocol description below.
 
-### Common Examples
+### 6.3 Common Examples
 
 **Read Device ID from Master (should return 0x3E for ADS1299):**
 ```
@@ -501,7 +534,7 @@ spi M 3 0x45 0x07 0x00
 - 0x45 = Read starting at register 0x05 (CH1SET)
 - 0x07 = Read 8 registers (all channels)
 
-### Daisy-Chain Register Reading
+### 6.4 Daisy-Chain Register Reading
 
 Due to the daisy-chain configuration, reading registers requires special handling:
 
@@ -563,7 +596,7 @@ Response: 30 bytes where:
 
 **Important**: Currently, the simplified SPI interface only returns Master values. To read both ADCs, the firmware uses an internal `readRegisterDaisy()` function that properly handles the 30-byte transaction.
 
-### Important Notes
+### 6.5 Important Notes
 - Board automatically handles CS (chip select) for the specified target
 - All transactions use 2 MHz SPI clock for reliability
 - Always send SDATAC (0x11) before configuration changes
@@ -572,7 +605,7 @@ Response: 30 bytes where:
 
 ## 7. 📈 Specifications
 
-### Hardware
+### 7.1 Hardware
 - **Microcontroller**: ESP32-C3 (RISC-V, 160MHz, WiFi 2.4GHz)
 - **ADC**: 2× Texas Instruments ADS1299 (24-bit, 8 channels each)
 - **ADC Configuration**: Daisy-chain mode - slave ADC data output connects to master ADC data input, ESP32 only reads from master
@@ -583,7 +616,7 @@ Response: 30 bytes where:
 - **Input Range**: ±4.5V (before digital gain)
 - **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (reduces max input before saturation)
 
-### Performance
+### 7.2 Performance
 - **Power Consumption**: ~400mW (typical during streaming)
 - **Battery Life**: 10+ hours with 1100mAh LiPo
 - **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
@@ -592,27 +625,27 @@ Response: 30 bytes where:
 
 ## 8. 🛠️ Troubleshooting
 
-### Board Not Detected
+### 8.1 Board Not Detected
 1. Check USB cable (must support data, not charge-only)
 2. Try different USB port
 3. Check Device Manager (Windows) or `ls /dev/tty*` (Linux/Mac)
 4. ESP32-C3 has built-in USB - no drivers needed!
 
-### Can't Connect to WiFi
+### 8.2 Can't Connect to WiFi
 1. Ensure 2.4GHz network (5GHz not supported)
 2. Check password (case sensitive)
 3. Verify router allows new devices
 4. Try WPA2 (WPA3 may cause issues)
 5. Check serial output for error messages
 
-### No Data Received
+### 8.3 No Data Received
 1. Verify PC firewall allows UDP ports 5000 and 5001
 2. Ensure your software responds to MEOW_MEOW with WOOF_WOOF
 3. Send `sys start_cnt` command to begin streaming
 4. Confirm LED shows streaming pattern (1 blink/5s)
 5. Try simple UDP listener to test connectivity
 
-### Noisy or Bad Signals
+### 8.4 Noisy or Bad Signals
 1. Check electrode connections (should be snug)
 2. Verify skin preparation (clean with alcohol)
 3. Measure impedance (<5kΩ recommended)
