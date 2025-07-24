@@ -89,7 +89,7 @@ class Battery_Sense
          *  The constructor does **not** read the ADC - the first call to update() does.
          */
         Battery_Sense(uint8_t   pin        = 4,
-                      value_t   scale      = 0.00428f,
+                      value_t   scale      = 0.001235f,
                       uint32_t  sample_ms  = 1000UL,
                       float     alpha      = 0.05f)        // ~ 1 Hz bandwidth at 20 Hz update()
             : _pin(pin),
