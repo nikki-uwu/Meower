@@ -16,54 +16,16 @@ Even from a pure performance standpoint, battery operation is essential - not ju
 
 ## 📚 What's in This Guide
 
-**1. ⚡ Quick Start** - Get data flowing in under 10 minutes
-   - 1.1 What You'll Need
-   - 1.2 Configure WiFi Settings
-   - 1.3 LED Status Patterns
-
-**2. 🔧 Building From Source** - Compile and upload custom firmware
-   - 2.1 Prerequisites
-   - 2.2 Build Steps
-   - 2.3 Troubleshooting Upload Issues
-
-**3. 📊 Data Format** - Channel mapping and packet structure
-   - 3.1 Channel Numbering
-   - 3.2 UDP Packet Structure
-   - 3.3 Why Single UDP Datagram?
-   - 3.4 Adaptive Frame Packing
-   - 3.5 Basic Data Parsing
-   - 3.6 Data Conversion Reference
-
-**4. 🎛️ Configuration** - Commands and settings
-   - 4.1 Network Ports & Communication
-   - 4.2 Discovery & Connection Flow
-   - 4.3 Command Reference
-   - 4.4 Reset to Setup Mode
-
-**5. 🎬 DSP Filter Details** - Digital signal processing implementation
-   - 5.1 Filter Chain Architecture
-   - 5.2 Frequency Response Equalizer
-   - 5.3 DC Removal Filter
-   - 5.4 Mains Interference Notch Filters
-   - 5.5 Filter Coefficient Generation
-   - 5.6 Important IIR Filter Behavior
-
-**6. 🔬 Raw SPI Access** - Direct ADC communication
-   - 6.1 Command Format
-   - 6.2 Register Reading in Daisy-Chain Mode
-   - 6.3 Common Examples
-   - 6.4 Daisy-Chain Register Reading
-   - 6.5 Important Notes
-
-**7. 📈 Specifications** - Technical details and performance
-   - 7.1 Hardware
-   - 7.2 Performance
-
-**8. 🛠️ Troubleshooting** - Common issues and solutions
-   - 8.1 Board Not Detected
-   - 8.2 Can't Connect to WiFi
-   - 8.3 No Data Received
-   - 8.4 Noisy or Bad Signals
+| Section | Subsections | Description |
+|---------|-------------|-------------|
+| **1. ⚡ Quick Start** | 1.1 What You'll Need<br>1.2 Configure WiFi Settings<br>1.3 LED Status Patterns | Get data flowing in under 10 minutes |
+| **2. 🔧 Building From Source** | 2.1 Prerequisites<br>2.2 Build Steps<br>2.3 Troubleshooting Upload Issues | Compile and upload custom firmware |
+| **3. 📊 Data Format** | 3.1 Channel Numbering<br>3.2 UDP Packet Structure<br>3.3 Why Single UDP Datagram?<br>3.4 Adaptive Frame Packing<br>3.5 Basic Data Parsing<br>3.6 Data Conversion Reference | Channel mapping and packet structure |
+| **4. 🎛️ Configuration** | 4.1 Network Ports & Communication<br>4.2 Discovery & Connection Flow<br>4.3 Command Reference<br>4.4 Reset to Setup Mode | Commands and settings |
+| **5. 🎬 DSP Filter Details** | 5.1 Filter Chain Architecture<br>5.2 Frequency Response Equalizer<br>5.3 DC Removal Filter<br>5.4 Mains Interference Notch Filters<br>5.5 Filter Coefficient Generation<br>5.6 Important IIR Filter Behavior | Digital signal processing implementation |
+| **6. 🔬 Raw SPI Access** | 6.1 Command Format<br>6.2 Register Reading in Daisy-Chain Mode<br>6.3 Common Examples<br>6.4 Daisy-Chain Register Reading<br>6.5 Important Notes | Direct ADC communication |
+| **7. 📈 Specifications** | 7.1 Hardware<br>7.2 Performance | Technical details and performance |
+| **8. 🛠️ Troubleshooting** | 8.1 Board Not Detected<br>8.2 Can't Connect to WiFi<br>8.3 No Data Received<br>8.4 Noisy or Bad Signals | Common issues and solutions |
 
 ## 1. ⚡ Quick Start
 
