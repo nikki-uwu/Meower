@@ -432,6 +432,9 @@ void setup()
     // GET RID OF TRI-STATE FOR MISO, so signal does not decay slowly if last bit was equal to 1
     pinMode(PIN_MISO, INPUT_PULLDOWN);
 
+    // Set SPI clock to default commands speed - 2 MHz
+    spiTransaction_ON(SPI_COMMAND_CLOCK);
+
     // Configure LED pin
     pinMode(PIN_LED, OUTPUT);          // make it an output
     digitalWrite(PIN_LED, LOW);        // start OFF
@@ -442,7 +445,6 @@ void setup()
     esp_wifi_get_config(WIFI_IF_STA, &cfg);
     cfg.sta.listen_interval = 1;
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
-
     esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // deepest power-save level while connected
 
     // hand sockets to the message parser
