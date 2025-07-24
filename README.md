@@ -298,8 +298,15 @@ The ADS1299 outputs 24-bit signed values. To convert to physical units:
 ```
 Raw ADC value → Voltage conversion:
 - LSB size = 4.5V / (2^23) = 0.536 microvolts per count
-- Voltage = raw_value * 0.536 µV (at hardware gain=1)
+- Voltage = raw_value * 0.536 µV / hardware_gain (at digital gain=1)
 ```
+
+**Hardware Gain vs Digital Gain**:
+- **Hardware PGA Gain** (set via `usr gain`): Applied in the ADC's analog front-end before digitization. Amplifies the voltage signal. **Warning**: Increasing PGA gain reduces the input range and can saturate the ADC.
+- **Digital Gain** (set via `sys digitalgain`): Applied after ADC conversion by bit-shifting. Used to occupy the full 32-bit scale during DSP processing for better precision, especially important for IIR filters at extreme settings (e.g., 0.5 Hz cutoff at 4000 Hz sampling).
+
+**Important DC Offset Consideration**:
+Check for DC voltage between your positive and negative input pins before setting gain. A small AC signal sitting on a large DC offset (e.g., 10 mV signal on 1V DC) will saturate the ADC when amplified. Use a multimeter to verify DC levels are near zero.
 
 **Digital Gain Note**: 
 This board uses digital gain (bit shifting) which reduces the maximum voltage range before the signal saturates the 24-bit output:
@@ -320,6 +327,7 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 - Timestamps and battery voltage are **little-endian**
 - Timestamp increments every 8 microseconds
 - Battery voltage is standard IEEE 754 32-bit float
+- PGA gain is a voltage amplification factor (e.g., gain=24 means 24x voltage amplification)
 
 ## 4. 🎛️ Configuration & Control
 
@@ -371,6 +379,8 @@ Send these commands to the control port as UTF-8 strings:
 | `sys digitalgain [1-256]` | Set digital gain (power of 2) | `sys digitalgain 8` |
 | **User Commands** | | |
 | `usr set_sampling_freq [250\|500\|1000\|2000\|4000]` | Set ADC sampling rate (Hz) | `usr set_sampling_freq 1000` |
+| `usr gain [channel\|ALL] [1\|2\|4\|6\|8\|12\|24]` | Set hardware PGA gain | `usr gain 5 24` or `usr gain ALL 4` |
+| `usr ch_power_down [channel\|ALL] [ON\|OFF]` | Channel power control | `usr ch_power_down 5 OFF` or `usr ch_power_down ALL ON` |
 | **Advanced/Debug Commands** | | |
 | `spi M\|S\|B <len> <bytes...>` | Direct SPI communication | `spi M 3 0x20 0x00 0x00` |
 
@@ -380,6 +390,7 @@ Send these commands to the control port as UTF-8 strings:
 - Filters must be enabled with both master switch (`filters_on`) AND individual filter switches
 - SPI commands: M=Master ADC, S=Slave ADC, B=Both ADCs
 - Board automatically adjusts frame packing when sampling rate changes
+- `ch_power_down OFF`: Places channel in high-impedance state. For best noise reduction, also short unused channels to themselves
 
 ### 4.4 Reset to Setup Mode
 Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enters setup mode:
@@ -506,6 +517,19 @@ spi M 3 0x45 0x07 0x00
 - 0x45 = Read starting at register 0x05 (CH1SET)
 - 0x07 = Read 8 registers (all channels)
 
+**Read Specific Channel Setting (e.g., Channel 5 on Master):**
+```
+spi M 3 0x2A 0x00 0x00
+```
+- 0x2A = Read register 0x0A (CH6SET - channel 5 is the 6th channel, 0-indexed)
+
+**Check Channel Power/Gain Status:**
+```
+spi M 3 0x25 0x00 0x00
+```
+- 0x25 = Read CH1SET (channel 0)
+- Response byte 3: bit 7 = power state, bits 6-4 = gain setting
+
 ### 6.4 Daisy-Chain Register Reading
 
 Due to the daisy-chain configuration, reading registers requires special handling:
@@ -585,14 +609,20 @@ Response: 30 bytes where:
 - **Channels**: 16 differential inputs
 - **Sampling Rates**: 250, 500, 1000, 2000, 4000 Hz
 - **Resolution**: 24-bit (0.536 μV/bit at gain=1)
-- **Input Range**: ±4.5V (before digital gain)
-- **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (reduces max input before saturation)
+- **Input Range**: ±4.5V (at PGA gain=1, reduces with higher gain)
+- **Hardware PGA Gain**: 1, 2, 4, 6, 8, 12, 24 (voltage amplification factor)
+- **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (bit shifting for DSP precision)
 
 ### 7.2 Performance
 - **Power Consumption**: ~400mW (typical during streaming)
 - **Battery Life**: 10+ hours with 1100mAh LiPo
 - **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
 - **WiFi Range**: 30m typical indoor
+- **Gain Recommendations**:
+  - EEG (10-100µV): Hardware gain 12-24x
+  - ECG (0.5-4mV): Hardware gain 2-8x
+  - EMG (50µV-30mV): Hardware gain 1-4x
+  - Always check for DC offset between pins before amplifying
 
 ## 8. 🛠️ Troubleshooting
 
@@ -624,6 +654,13 @@ Response: 30 bytes where:
 5. Check ground and reference electrode placement
 6. Move away from AC power sources
 7. Ensure battery powered during use
+8. **Gain issues**:
+   - Signal clipping? Reduce hardware gain
+   - Signal too small? Increase hardware gain first, then digital gain
+   - Check DC offset between pins with multimeter before setting gain
+9. **Unused channels**: Power down AND short unused channels to reduce noise
+   - `usr ch_power_down 15 OFF` to power down
+   - Short the channel inputs to themselves (command coming soon)
 
 ---
 ### Previous Versions :3

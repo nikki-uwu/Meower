@@ -57,6 +57,35 @@ static inline char *next_tok(char **ctx)
     return strtok_r(nullptr, " \r\n", ctx);
 }
 
+// Helper to update individual channel register bits
+// Always uses read_Register_Daisy for reading
+static bool update_channel_register(int channel, uint8_t mask, uint8_t new_bits)
+{
+    if (channel < 0 || channel > 15) return false;
+    
+    // Determine target ADC and register
+    char target = (channel < 8) ? 'M' : 'S';
+    uint8_t reg_addr = 0x05 + (channel % 8);
+    
+    // Read current values from BOTH ADCs
+    RegValues current = read_Register_Daisy(reg_addr);
+    
+    // Pick the value we need
+    uint8_t current_val = (channel < 8) ? current.master_reg_byte : current.slave_reg_byte;
+    uint8_t new_val = (current_val & ~mask) | (new_bits & mask);
+    
+    // Write to specific ADC
+    uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg_addr), 0x00, new_val};
+    uint8_t rx[3] = {0};
+    xfer(target, 3, tx, rx);
+    
+    // Verify by reading both again
+    RegValues verify = read_Register_Daisy(reg_addr);
+    uint8_t verified_val = (channel < 8) ? verify.master_reg_byte : verify.slave_reg_byte;
+    
+    return (verified_val == new_val);
+}
+
 // Register Read-Modify-Write Helper
 // Reads a register from both ADCs, modifies specific bits, writes back
 // Returns true if successful, false if verification failed
@@ -533,11 +562,240 @@ void handle_USR(char **ctx, const char * /*orig*/)
         return;
     }
 
+    // --------------------------------------------------------------------
+    // Set Channel PGA Gain (usr gain <channel|ALL> <gain>)
+    // Acceptable gains: 1, 2, 4, 6, 8, 12, 24
+    // Maps to CHnSET register bits [6:4]: 000 to 110
+    // Reference: ADS1299 datasheet, page 47 "CHnSET: Channel n Settings Registers"
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "gain"))
+    {
+        // Get channel argument
+        char *ch_tok = next_tok(ctx);
+        if (!ch_tok)
+        {
+            send_error("gain - missing channel number (0-15 or ALL)");
+            return;
+        }
+
+        // Get gain argument
+        char *gain_tok = next_tok(ctx);
+        if (!gain_tok)
+        {
+            send_error("gain - missing gain value (1,2,4,6,8,12,24)");
+            return;
+        }
+
+        // Parse gain value and map to register bits
+        int gain_val = atoi(gain_tok);
+        uint8_t gain_bits = 0xFF; // Invalid marker
+        
+        switch (gain_val)
+        {
+            case  1: gain_bits = 0x00; break; // 000
+            case  2: gain_bits = 0x10; break; // 001 << 4
+            case  4: gain_bits = 0x20; break; // 010 << 4
+            case  6: gain_bits = 0x30; break; // 011 << 4
+            case  8: gain_bits = 0x40; break; // 100 << 4
+            case 12: gain_bits = 0x50; break; // 101 << 4
+            case 24: gain_bits = 0x60; break; // 110 << 4
+            default:
+                send_error("gain - invalid gain value (must be 1,2,4,6,8,12,24)");
+                return;
+        }
+
+        // Handle "ALL" or specific channel
+        if (!strcasecmp(ch_tok, "ALL"))
+        {
+            Debug.log("CMD gain - setting ALL channels to gain %d", gain_val);
+            bool all_success = true;
+            
+            // Update all channels by register (more efficient)
+            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+            {
+                // Read both ADCs for this register
+                RegValues current = read_Register_Daisy(reg);
+                
+                // Update both values with new gain
+                uint8_t new_master = (current.master_reg_byte & 0x8F) | gain_bits;
+                uint8_t new_slave = (current.slave_reg_byte & 0x8F) | gain_bits;
+                
+                // Write to Master
+                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
+                uint8_t rx[3] = {0};
+                xfer('M', 3, tx, rx);
+                
+                // Write to Slave
+                tx[2] = new_slave;
+                xfer('S', 3, tx, rx);
+                
+                // Verify
+                RegValues verify = read_Register_Daisy(reg);
+                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
+                {
+                    Debug.log("Failed to set gain for register 0x%02X", reg);
+                    all_success = false;
+                }
+            }
+            
+            if (all_success)
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: all channels set to gain %d", gain_val);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("gain - failed to update some channels");
+            }
+        }
+        else
+        {
+            // Parse specific channel number
+            char *endptr;
+            long ch_num = strtol(ch_tok, &endptr, 10);
+            
+            if (*endptr != '\0' || ch_num < 0 || ch_num > 15)
+            {
+                send_error("gain - invalid channel (must be 0-15 or ALL)");
+                return;
+            }
+
+            Debug.log("CMD gain - setting channel %ld to gain %d", ch_num, gain_val);
+            
+            // Use helper for single channel
+            if (update_channel_register(ch_num, 0x70, gain_bits))
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: channel %ld set to gain %d", ch_num, gain_val);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("gain - failed to update channel register");
+            }
+        }
+        return;
+    }
+
+    // --------------------------------------------------------------------
+    // Channel Power Down Control (usr ch_power_down <channel|ALL> <ON|OFF>)
+    // ON = power on (normal operation), OFF = power down
+    // Controls CHnSET register bit [7]
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "ch_power_down"))
+    {
+        // Get channel argument
+        char *ch_tok = next_tok(ctx);
+        if (!ch_tok)
+        {
+            send_error("ch_power_down - missing channel number (0-15 or ALL)");
+            return;
+        }
+
+        // Get ON/OFF argument
+        char *state_tok = next_tok(ctx);
+        if (!state_tok)
+        {
+            send_error("ch_power_down - missing state (ON or OFF)");
+            return;
+        }
+
+        // Parse state - ON means power on (bit=0), OFF means power down (bit=1)
+        uint8_t power_bit;
+        if (!strcasecmp(state_tok, "ON"))
+        {
+            power_bit = 0x00;  // Clear bit 7 = power on
+        }
+        else if (!strcasecmp(state_tok, "OFF"))
+        {
+            power_bit = 0x80;  // Set bit 7 = power down
+        }
+        else
+        {
+            send_error("ch_power_down - state must be ON or OFF");
+            return;
+        }
+
+        // Handle "ALL" or specific channel
+        if (!strcasecmp(ch_tok, "ALL"))
+        {
+            Debug.log("CMD ch_power_down - setting ALL channels to %s", state_tok);
+            bool all_success = true;
+            
+            // Update all channels by register
+            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+            {
+                // Read both ADCs for this register
+                RegValues current = read_Register_Daisy(reg);
+                
+                // Update both values with power state
+                uint8_t new_master = (current.master_reg_byte & 0x7F) | power_bit;
+                uint8_t new_slave = (current.slave_reg_byte & 0x7F) | power_bit;
+                
+                // Write to Master
+                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
+                uint8_t rx[3] = {0};
+                xfer('M', 3, tx, rx);
+                
+                // Write to Slave
+                tx[2] = new_slave;
+                xfer('S', 3, tx, rx);
+                
+                // Verify
+                RegValues verify = read_Register_Daisy(reg);
+                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
+                {
+                    Debug.log("Failed to set power state for register 0x%02X", reg);
+                    all_success = false;
+                }
+            }
+            
+            if (all_success)
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: all channels powered %s", state_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_power_down - failed to update some channels");
+            }
+        }
+        else
+        {
+            // Parse specific channel number
+            char *endptr;
+            long ch_num = strtol(ch_tok, &endptr, 10);
+            
+            if (*endptr != '\0' || ch_num < 0 || ch_num > 15)
+            {
+                send_error("ch_power_down - invalid channel (must be 0-15 or ALL)");
+                return;
+            }
+
+            Debug.log("CMD ch_power_down - setting channel %ld to %s", ch_num, state_tok);
+            
+            // Use helper for single channel
+            if (update_channel_register(ch_num, 0x80, power_bit))
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: channel %ld powered %s", ch_num, state_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_power_down - failed to update channel register");
+            }
+        }
+        return;
+    }
+
     // Unknown USR command
     // --------------------------------------------------------------------
     char out[256];
     snprintf(out, sizeof(out),
-        "usr - got '%s', expected (set_sampling_freq)", cmd);
+        "usr - got '%s', expected (set_sampling_freq|gain|ch_power_down)", cmd);
     send_error(out);
 }
 

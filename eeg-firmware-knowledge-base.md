@@ -76,6 +76,9 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 10. Enable test signal (1Hz square wave)
 11. Board initializes at 250 Hz with 5-frame packing (50 packets/sec)
 12. SPI remains at 2 MHz until `sys start_cnt` switches to 16 MHz
+13. **Default channel settings**:
+    - Normal mode: Test signal input, gain = 1x (register value 0x05)
+    - BCI mode: Normal electrode input with SRB2, gain = 1x (register value 0x08)
 
 ### Readiness Check
 ```c
@@ -358,11 +361,26 @@ sys digitalgain 1|2|4|8|16|32|64|128|256  (real-time)
 ### User Commands (Stop continuous mode before executing)
 ```
 usr set_sampling_freq 250|500|1000|2000|4000
+usr gain <channel|ALL> <1|2|4|6|8|12|24>
+usr ch_power_down <channel|ALL> <ON|OFF>
 ```
-- Changes ADS1299 sampling rate
-- Automatically stops continuous mode first
-- Updates CONFIG1 register bits [2:0] on both ADCs
-- Validates input before applying
+- `set_sampling_freq`: Changes ADS1299 sampling rate
+  - Automatically stops continuous mode first
+  - Updates CONFIG1 register bits [2:0] on both ADCs
+  - Validates input before applying
+  
+- `gain`: Sets hardware PGA gain for channels
+  - Channel: 0-15 (0-7 master, 8-15 slave) or ALL
+  - Gain values: 1, 2, 4, 6, 8, 12, 24x
+  - Updates CHnSET register bits [6:4]
+  - Examples: `usr gain 5 24` or `usr gain ALL 4`
+  
+- `ch_power_down`: Controls channel power state
+  - Channel: 0-15 or ALL
+  - ON = power on (normal operation)
+  - OFF = power down (high impedance)
+  - Updates CHnSET register bit [7]
+  - Examples: `usr ch_power_down 5 OFF` or `usr ch_power_down ALL ON`
 
 ### SPI Commands (Stop continuous mode before executing)
 ```
@@ -374,12 +392,31 @@ Max 256 bytes per transaction
 ### Helper Functions
 
 **modify_register_bits()**:
-- New helper for safe register modification
-- Reads current value from both ADCs
+- Helper for safe register modification on both ADCs
+- Reads current value from both ADCs using read_Register_Daisy()
 - Modifies only specified bits using mask
 - Writes back to both ADCs
 - Verifies the operation succeeded
 - Includes debug logging
+
+**update_channel_register()**:
+- Helper for channel-specific register updates
+- Maps channel number (0-15) to correct ADC and register
+- Always uses read_Register_Daisy() for reading
+- Handles master/slave selection automatically
+- Returns true if update successful
+- Used by gain and ch_power_down commands
+
+**Channel Gain Control**:
+- CHnSET registers (0x05-0x0C) control individual channels
+- Bits [6:4] set PGA gain: 000=1x, 001=2x, 010=4x, 011=6x, 100=8x, 101=12x, 110=24x
+- Bit [7] = Power down control (0=normal, 1=power down)
+- Bit [3] = SRB2 connection (0=open, 1=closed)
+- Bits [2:0] = Input mux selection (preserved during gain changes)
+- Channels 0-7 on Master ADC, 8-15 on Slave ADC
+- Default values:
+  - Normal mode: 0x05 (test signal, gain 1x, SRB2 open, powered on)
+  - BCI mode: 0x08 (normal electrode input, gain 1x, SRB2 closed, powered on)
 
 ---
 
@@ -469,6 +506,14 @@ sys stop_cnt
 # Change sampling rate
 usr set_sampling_freq 1000
 
+# Set channel gains
+usr gain 5 24       # Channel 5 to 24x gain
+usr gain ALL 4      # All channels to 4x gain
+
+# Channel power control
+usr ch_power_down 5 OFF    # Power down channel 5
+usr ch_power_down ALL ON   # Power on all channels
+
 # Reset everything
 sys adc_reset     # Just ADCs
 sys esp_reboot    # Full system
@@ -481,6 +526,7 @@ sys digitalgain 8       # 8x amplification
 
 # Debug
 spi M 3 0x20 0x00 0x00  # Read ADC ID
+spi M 3 0x25 0x00 0x00  # Read CH1SET register (check gain/power)
 ```
 
 ---
