@@ -15,39 +15,54 @@ FLASH_APP  = 0x140000      # 1 310 720 factory-partition budget
 
 # ── DSP symbols we care about ───────────────────────────────────────────
 DSP_SYMBOLS = [
-    # --- FIR EQ ---
-    "FIR_H",                # 7x int32 FIR taps
-    "fir_hist",             # 16x7 int32 circular buffer
-
-    # --- DC Blocker IIR ---
-    "coef_B", "coef_A",     # 3 + 2 int32, high-pass IIR
-    "x1_q", "x2_q", "y1_q", "y2_q", # 16 int32 each
-
-    # --- 50/60 Hz Notch ---
-    "BQ_B", "BQ_A",         # 3 + 2 int32 for 50/60Hz notch
-    "state",                # 16x2x4 int32_t, notch biquad filter state
-
-    # --- 100/120 Hz Notch ---
-    "coef_B", "coef_A",     # (reuse or unique name for 100/120Hz)
-    "x1_q", "x2_q", "y1_q", "y2_q", # for 100/120Hz if separate, else skip
-
-    # --- Data Buffers ---
-    "rawADCdata",           # 54B
-    "parsedADCdata",        # 48B
-    "dataBuffer",           # 1456B+
-    "dspBuffer",            # 16x int32
-    "txBuf",                # up to 1460B
-
-    "notch100120Hz_16ch_2p",
-    "notch5060Hz_16ch_4p",
-    "adcEqualizer_16ch_7tap",
-    "dcBlockerIIR_16ch_2p",
-
-    # --- Battery Sense class (if big and persistent)
-    # "BatterySense",       # only if you want to track this class
-
-    # --- FreeRTOS Queues (if explicit variables)
-    # "adcFrameQue", "cmdQue",  # if you want to see queue object size/placement
+    # --- Global Frame Packing Variables ---
+    "FRAMES_PER_PACKET_LUT",    # const uint32_t[5] - lookup table for adaptive packing
+    "g_framesPerPacket",        # volatile uint32_t - current frames per UDP packet
+    "g_bytesPerPacket",         # volatile uint32_t - ADC data bytes threshold
+    "g_udpPacketBytes",         # volatile uint32_t - total UDP payload size
+    
+    # --- FIR Equalizer (adcEqualizer_16ch_7tap) ---
+    # Note: These are static inside the function, shown with C++ mangling
+    "fir_idx",                  # uint8_t - circular buffer index
+    "fir_hist",                 # int32_t[16][7] - circular buffer, 16ch × 7 taps
+    
+    # --- DC Blocker IIR (dcBlockerIIR_16ch_2p) ---
+    "coef_B",                   # int32_t[26][3] - numerator coeffs (25 sets + bypass)
+    "coef_A",                   # int32_t[26][2] - denominator coeffs 
+    "x1_q", "x2_q",            # int32_t[16] - input state history per channel
+    "y1_q", "y2_q",            # int32_t[16] - output state history per channel
+    
+    # --- 50/60 Hz Notch (notch5060Hz_16ch_4p) ---
+    "BQ_B",                     # int32_t[11][3] - biquad numerators (10 sets + bypass)
+    "BQ_A",                     # int32_t[11][2] - biquad denominators
+    "state",                    # int32_t[16][2][4] - per channel, 2 stages, 4 states
+    
+    # --- 100/120 Hz Notch (notch100120Hz_16ch_4p) ---
+    # Same names but different functions - C++ mangles them differently
+    
+    # --- Main Task Data Buffers ---
+    "rawADCdata",               # uint8_t[54] - raw SPI data (2×27 bytes)
+    "parsedADCdata",            # uint8_t[48] - stripped preambles (16ch × 3 bytes)
+    "dataBuffer",               # uint8_t[1456] - packed frames (max 28 × 52 bytes)
+    "dspBuffer",                # int32_t[16] - unpacked samples for DSP
+    
+    # --- UDP Task Buffer ---
+    "txBuf",                    # uint8_t[1460] - final UDP payload + battery
+    
+    # --- Global Filter Control Flags ---
+    "g_filtersEnabled",         # volatile bool - master filter switch
+    "g_adcEqualizer",          # volatile bool - FIR on/off
+    "g_removeDC",              # volatile bool - DC blocker on/off
+    "g_block5060Hz",           # volatile bool - 50/60Hz notch on/off
+    "g_block100120Hz",         # volatile bool - 100/120Hz notch on/off
+    "g_digitalGain",           # volatile uint32_t - bit shift amount (0-8)
+    "g_selectSamplingFreq",    # volatile uint32_t - rate index (0-4)
+    "g_selectNetworkFreq",     # volatile uint32_t - 50Hz=0, 60Hz=1
+    "g_selectDCcutoffFreq",    # volatile uint32_t - cutoff index (0-4)
+    
+    # --- Queue Handles ---
+    "adcFrameQue",             # QueueHandle_t - 5 slots, variable size
+    "cmdQue",                  # QueueHandle_t - 8 slots × 512 bytes
 ]
 
 # ── Helpers ─────────────────────────────────────────────────────────────

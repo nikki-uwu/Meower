@@ -9,7 +9,7 @@ This document consolidates ALL technical knowledge, implementation details, and 
 1. **ALWAYS use battery power during recording** - USB introduces catastrophic noise that destroys µV-level signals
 2. **Never exceed 2 MHz SPI during initial configuration** - ADS1299 refuses faster clocks after reset
 3. **Keep ADC sense pin on ADC1 only** - ADC2 conflicts with WiFi and will cause crashes
-4. **Triple-tap power for recovery** - If board acts dead, 3 power cycles < 3s each triggers captive portal
+4. **Quad-tap power for recovery** - If board acts dead, 4 power cycles < 5s cumulative triggers captive portal
 5. **Send "WOOF_WOOF" every ≤10 seconds** - Board drops to IDLE after 10s without keep-alive
 
 ---

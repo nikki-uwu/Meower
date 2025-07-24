@@ -456,16 +456,19 @@ spi [target] [length] [byte0] [byte1] ... [byteN]
 
 **Response**: Board returns the same number of bytes received from SPI
 
-### Current Limitations (as of 2025.07.18)
-- **Writing**: Works for Master, Slave, and Both targets
-- **Reading**: Only works from Master ADC
-- **Slave reading not implemented**: Due to daisy-chain configuration, reading from slave would require:
-  1. Chip select slave only
-  2. Activate master 
-  3. Push 27 dummy bytes through master (3 byte preamble + 24 bytes channel data)
-  4. Next 27 bytes would be slave data
-  
-This follows the same principle as ADC sample reading in daisy-chain mode where each ADC outputs 27 bytes.
+### Register Reading in Daisy-Chain Mode
+
+The dual ADS1299 chips are configured in daisy-chain mode with separate chip selects. This means:
+- **Writing registers**: Works normally - you can write to Master, Slave, or Both independently
+- **Reading registers**: Requires special handling due to daisy-chain data flow
+
+The simplified 'spi' command returns only data from the Master ADC. However, the firmware includes a fully implemented `read_Register_Daisy()` function that reads from both ADCs simultaneously:
+1. Selects both chips (target 'B')
+2. Sends a 30-byte transaction
+3. Extracts Master value from byte 3
+4. Extracts Slave value from byte 30
+
+If you're implementing your own register reads via raw SPI commands, treat it like ADC sample reading in daisy-chain mode where data flows through: Slave → Master → ESP32. See the detailed protocol description below.
 
 ### Common Examples
 
