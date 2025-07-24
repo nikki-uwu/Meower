@@ -148,62 +148,6 @@ static void cmd_STOP_CONT(char **)
     Debug.print("CMD stop_cnt - user requested stop");
     net.stopStream();
 }
-static void cmd_SPI_SR(char **args, const char *orig)
-{
-    if (!C || !args || !*args)
-    {
-        send_error("spi rd/sr - missing arguments");
-        return;
-    }
-
-    char *tok = next_tok(args);                 // target M/S/B
-    if (!tok)
-    {
-        send_error("spi rd/sr - missing target (M|S|B)");
-        return;
-    }
-    char target = *tok;
-    if (target!='M' && target!='S' && target!='B')
-    {
-        char out[96];
-        snprintf(out,sizeof(out),
-                 "spi rd/sr - bad target '%c', expected M,S,B", target);
-        send_error(out);
-        return;
-    }
-
-    tok = next_tok(args);                       // length
-    if (!tok)
-    {
-        send_error("spi rd/sr - missing length");
-        return;
-    }
-    char *endptr = nullptr;
-    uint32_t len = strtoul(tok, &endptr, 0);
-    if (*endptr || len==0 || len>256)
-    {
-        send_error("spi rd/sr - invalid length (1-256)");
-        return;
-    }
-
-    uint8_t tx[256] = {0}, rx[256] = {0};
-    for (uint32_t i = 0; i < len; ++i)
-    {
-        tok = next_tok(args);
-        if (!tok)
-        {
-            send_error("spi rd/sr - too few data bytes");
-            return;
-        }
-        tx[i] = (uint8_t) strtoul(tok, nullptr, 0);
-    }
-
-    // SPI transaction
-    xfer(target, len, tx, rx);
-
-    // Echo the response
-    send_reply(rx, len);
-}
 
 // Hard reboot - never returns
 static void cmd_ESP_REBOOT(char ** )
@@ -220,6 +164,9 @@ static void cmd_ESP_REBOOT(char ** )
 void handle_SPI(char **ctx, const char * /*orig*/)
 {
     if (!ctx) return;
+
+    // CRITICAL: Stop continuous mode before any SPI commands
+    continuous_mode_start_stop(LOW);
 
     // --------------------------------------------------------------------
     // 1. TARGET  (BOTH / MASTER / SLAVE)
@@ -515,6 +462,9 @@ void handle_SYS(char **ctx, const char * /*orig*/)
 // ---------------------------------------------------------------------------------------------------------------------------------
 void handle_USR(char **ctx, const char * /*orig*/)
 {
+    // CRITICAL: Stop continuous mode before any USR commands
+    continuous_mode_start_stop(LOW);
+
     char *cmd = next_tok(ctx);
     if (!cmd)
     {
@@ -564,9 +514,7 @@ void handle_USR(char **ctx, const char * /*orig*/)
                 return;
         }
 
-        // Stop continuous mode first
-        continuous_mode_start_stop(LOW);
-        Debug.log("CMD set_sampling_freq - stopped continuous mode");
+        Debug.log("CMD set_sampling_freq - setting to %d Hz", freq);
 
         // Use helper to update CONFIG1 register bits [2:0]
         bool success = modify_register_bits(0x01, 0x07, dr_bits, "CONFIG1");

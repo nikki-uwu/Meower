@@ -39,7 +39,7 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 - **Frame structure**: 27 bytes per ADC (3 preamble + 24 channel data)
 
 ### Electrical Design Notes
-- **Battery voltage divider**: Calibrated scale factor = 0.00123482072238899979173968476499
+- **Battery voltage divider**: Calibrated scale factor = 0.01235 (current implementation)
 - **Pull-down on MISO**: Prevents signal decay when last bit = 1
 - **CS timing**: Uses direct register writes (40ns edges) vs digitalWrite (1.2µs)
 - **Power**: ~400mW typical, 470mW max @ 4kHz
@@ -74,8 +74,8 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 8. Configure master clock output to slave
 9. Wait 50ms for slave clock lock
 10. Enable test signal (1Hz square wave)
-11. Switch to 16 MHz for normal operation
-12. Board initializes at 250 Hz with 5-frame packing (50 packets/sec)
+11. Board initializes at 250 Hz with 5-frame packing (50 packets/sec)
+12. SPI remains at 2 MHz until `sys start_cnt` switches to 16 MHz
 
 ### Readiness Check
 ```c
@@ -237,12 +237,33 @@ Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120]
 
 ## 6. SPI Communication Layer
 
-### Clock Management
+### Clock Management (CENTRALIZED)
+
+**Critical Change**: SPI clock management is now **centralized** in `continuous_mode_start_stop()`. This is the **ONLY** function that should change SPI clock speeds.
+
+**Clock States**:
 ```c
-Configuration: 2 MHz (MUST use during setup)
-Streaming:     16 MHz (stable maximum)
+Configuration: 2 MHz (when continuousReading == false)
+Streaming:     16 MHz (when continuousReading == true)
 Mode:          SPI_MODE1 (CPOL=0, CPHA=1)
 ```
+
+**Why Different Speeds?**:
+- **2 MHz for configuration**: ADS1299 register operations become unstable above 4 MHz. Using 2 MHz guarantees reliable register reads/writes.
+- **16 MHz for streaming**: Maximum stable speed for continuous data transfer, providing best throughput for real-time EEG data.
+
+**Functions That Previously Changed Clocks** (now removed):
+- `ads1299_full_reset()` - relies on continuous_mode_start_stop()
+- `BCI_preset()` - relies on continuous_mode_start_stop()
+- `wait_until_ads1299_is_ready()` - relies on continuous_mode_start_stop()
+- `read_Register_Daisy()` - uses current clock setting
+- `handle_SPI()` - uses current clock setting
+- `modify_register_bits()` - uses current clock setting
+
+**Clock Invariant**:
+- When `continuousReading == false` → SPI clock is 2 MHz
+- When `continuousReading == true` → SPI clock is 16 MHz
+- All functions can assume the correct clock is already set
 
 ### Chip Select Control
 - **Method**: Direct register writes via WRITE_PERI_REG
@@ -306,31 +327,59 @@ When reading a single register in daisy-chain mode:
 - **Encoding**: UTF-8 strings
 - **Termination**: Not required (packet boundary)
 
-### System Commands
+### Command Safety
+**Command Behavior During Continuous Mode**:
+- **SYS commands**: Execute without interrupting data flow. Filters, digital gain, network settings, and other parameters update in real-time while streaming continues.
+- **SPI and USR commands**: Automatically call `continuous_mode_start_stop(LOW)` before executing. This ensures:
+  - Proper SPI clock (2 MHz) for configuration
+  - ADCs exit RDATAC mode
+  - No data corruption during register access
+- **Clock Speed Rationale**: Register operations above 4 MHz can be unstable on ADS1299. The firmware uses 2 MHz for all configuration operations to guarantee reliable communication, while data streaming runs at 16 MHz for maximum throughput.
+
+### System Commands (Can be used during continuous mode)
 ```
 sys start_cnt         Start streaming
 sys stop_cnt          Stop streaming
-sys adc_reset         Full ADC reset + sync
-sys esp_reboot        Complete reboot
-sys erase_flash       Wipe config → AP mode
+sys adc_reset         Full ADC reset + sync (stops continuous mode)
+sys esp_reboot        Complete reboot (stops continuous mode)
+sys erase_flash       Wipe config → AP mode (stops continuous mode)
 
-sys filters_on/off    Master filter switch
-sys filter_equalizer_on/off
-sys filter_dc_on/off
-sys filter_5060_on/off
-sys filter_100120_on/off
+sys filters_on/off    Master filter switch (real-time)
+sys filter_equalizer_on/off  (real-time)
+sys filter_dc_on/off        (real-time)
+sys filter_5060_on/off      (real-time)
+sys filter_100120_on/off    (real-time)
 
-sys networkfreq 50|60
-sys dccutofffreq 0.5|1|2|4|8
-sys digitalgain 1|2|4|8|16|32|64|128|256
+sys networkfreq 50|60       (real-time)
+sys dccutofffreq 0.5|1|2|4|8  (real-time)
+sys digitalgain 1|2|4|8|16|32|64|128|256  (real-time)
 ```
 
-### SPI Commands
+### User Commands (Stop continuous mode before executing)
+```
+usr set_sampling_freq 250|500|1000|2000|4000
+```
+- Changes ADS1299 sampling rate
+- Automatically stops continuous mode first
+- Updates CONFIG1 register bits [2:0] on both ADCs
+- Validates input before applying
+
+### SPI Commands (Stop continuous mode before executing)
 ```
 spi M|S|B|T <len> <byte0> <byte1> ...
 M=Master, S=Slave, B=Both, T=Test
 Max 256 bytes per transaction
 ```
+
+### Helper Functions
+
+**modify_register_bits()**:
+- New helper for safe register modification
+- Reads current value from both ADCs
+- Modifies only specified bits using mask
+- Writes back to both ADCs
+- Verifies the operation succeeded
+- Includes debug logging
 
 ---
 
@@ -385,7 +434,7 @@ return (now >= then) ? (now - then) : 0;
 ### Battery_Sense Class
 - **IIR filter**: α=0.05 default (20x jitter reduction)
 - **Period**: Configurable, default 32ms
-- **Scaling**: Hardware-specific calibration factor
+- **Scaling**: Hardware-specific calibration factor (0.01235)
 
 ### Blinker Class
 - **Zero-cost**: Only writes on state changes
@@ -416,6 +465,9 @@ sys start_cnt
 
 # Stop recording  
 sys stop_cnt
+
+# Change sampling rate
+usr set_sampling_freq 1000
 
 # Reset everything
 sys adc_reset     # Just ADCs

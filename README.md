@@ -341,6 +341,11 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 ### 4.3 Command Reference
 Send these commands to the control port as UTF-8 strings:
 
+**Important Command Behavior**:
+- **SYS commands**: Can be executed during continuous mode (real-time changes). Filters, digital gain, and network settings update immediately without interrupting data flow.
+- **SPI and USR commands**: Automatically stop continuous mode before executing to ensure data integrity. The board uses different SPI clocks: 16 MHz during streaming for high-speed data transfer, and 2 MHz for configuration to guarantee stable register operations (higher speeds can cause unreliable register access).
+- **Continuous mode** resumes only with `sys start_cnt` command.
+
 | Command | Description | Example |
 |---------|-------------|---------|
 | `sys start_cnt` | Start continuous streaming | Begin data acquisition |
@@ -364,6 +369,8 @@ Send these commands to the control port as UTF-8 strings:
 | `sys networkfreq [50\|60]` | Set mains frequency | `sys networkfreq 60` (US/Americas) |
 | `sys dccutofffreq [0.5\|1\|2\|4\|8]` | DC filter cutoff (Hz) | `sys dccutofffreq 0.5` |
 | `sys digitalgain [1-256]` | Set digital gain (power of 2) | `sys digitalgain 8` |
+| **User Commands** | | |
+| `usr set_sampling_freq [250\|500\|1000\|2000\|4000]` | Set ADC sampling rate (Hz) | `usr set_sampling_freq 1000` |
 | **Advanced/Debug Commands** | | |
 | `spi M\|S\|B <len> <bytes...>` | Direct SPI communication | `spi M 3 0x20 0x00 0x00` |
 
