@@ -43,6 +43,8 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 - **Pull-down on MISO**: Prevents signal decay when last bit = 1
 - **CS timing**: Uses direct register writes (40ns edges) vs digitalWrite (1.2µs)
 - **Power**: ~400mW typical, 470mW max @ 4kHz
+- **PGA Gain**: Voltage amplification in analog domain before ADC conversion
+- **DC Offset Warning**: Check DC voltage between input pins before setting gain - small signals on DC offsets will saturate when amplified
 
 ---
 
@@ -363,6 +365,8 @@ sys digitalgain 1|2|4|8|16|32|64|128|256  (real-time)
 usr set_sampling_freq 250|500|1000|2000|4000
 usr gain <channel|ALL> <1|2|4|6|8|12|24>
 usr ch_power_down <channel|ALL> <ON|OFF>
+usr ch_input <channel|ALL> <input_type>
+usr ch_srb2 <channel|ALL> <ON|OFF>
 ```
 - `set_sampling_freq`: Changes ADS1299 sampling rate
   - Automatically stops continuous mode first
@@ -381,6 +385,27 @@ usr ch_power_down <channel|ALL> <ON|OFF>
   - OFF = power down (high impedance)
   - Updates CHnSET register bit [7]
   - Examples: `usr ch_power_down 5 OFF` or `usr ch_power_down ALL ON`
+  
+- `ch_input`: Selects channel input source
+  - Channel: 0-15 or ALL
+  - Updates CHnSET register bits [2:0]
+  - Input types:
+    - NORMAL: Normal electrode input (000)
+    - SHORTED: Inputs shorted together (001)
+    - BIAS_MEAS: Measure bias signal (010)
+    - MVDD: Measure supply voltage (011)
+    - TEMP: Temperature sensor (100)
+    - TEST: Internal test signal (101)
+    - BIAS_DRP: Positive electrode driver (110)
+    - BIAS_DRN: Negative electrode driver (111)
+  - Examples: `usr ch_input 5 SHORTED` or `usr ch_input ALL TEST`
+  
+- `ch_srb2`: Controls SRB2 (reference) connection
+  - Channel: 0-15 or ALL
+  - ON = closed (connected to SRB2)
+  - OFF = open (disconnected)
+  - Updates CHnSET register bit [3]
+  - Examples: `usr ch_srb2 5 ON` or `usr ch_srb2 ALL OFF`
 
 ### SPI Commands (Stop continuous mode before executing)
 ```
@@ -407,16 +432,29 @@ Max 256 bytes per transaction
 - Returns true if update successful
 - Used by gain and ch_power_down commands
 
-**Channel Gain Control**:
+**Channel Control (CHnSET Registers)**:
 - CHnSET registers (0x05-0x0C) control individual channels
-- Bits [6:4] set PGA gain: 000=1x, 001=2x, 010=4x, 011=6x, 100=8x, 101=12x, 110=24x
-- Bit [7] = Power down control (0=normal, 1=power down)
-- Bit [3] = SRB2 connection (0=open, 1=closed)
-- Bits [2:0] = Input mux selection (preserved during gain changes)
 - Channels 0-7 on Master ADC, 8-15 on Slave ADC
+- Register bit layout:
+  - Bit [7]: Power down control (0=normal, 1=power down)
+  - Bits [6:4]: PGA gain (000=1x, 001=2x, 010=4x, 011=6x, 100=8x, 101=12x, 110=24x)
+  - Bit [3]: SRB2 connection (0=open, 1=closed)
+  - Bits [2:0]: Input mux selection
+    - 000: Normal electrode input
+    - 001: Inputs shorted together
+    - 010: Bias measurement
+    - 011: Supply measurement (MVDD)
+    - 100: Temperature sensor
+    - 101: Test signal
+    - 110: Bias drive positive (BIAS_DRP)
+    - 111: Bias drive negative (BIAS_DRN)
 - Default values:
   - Normal mode: 0x05 (test signal, gain 1x, SRB2 open, powered on)
   - BCI mode: 0x08 (normal electrode input, gain 1x, SRB2 closed, powered on)
+- Common configurations:
+  - Unused channel: Power down + shorted inputs (0x81)
+  - Differential mode: Normal input, SRB2 open (0x00 with desired gain)
+  - Referenced mode: Normal input, SRB2 closed (0x08 with desired gain)
 
 ---
 
@@ -457,6 +495,7 @@ esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Deepest power-save mode
 - **DMA transfers**: Cleaner edges than byte loops
 - **Fixed-point DSP**: Consistent timing, no float variance
 - **Adaptive packing**: Single volatile read adds ~1-2 CPU cycles (12ns @ 160MHz)
+- **Digital gain usage**: Helps occupy full 32-bit range for filter precision, not just visualization
 
 ---
 
@@ -485,8 +524,10 @@ return (now >= then) ? (now - then) : 0;
 ### Quirks to Remember
 - **WiFi + ADC2** = instant crash (hardware limitation)
 - **USB ground loops** = unusable data (physics problem)
-- **IIR at 0.5Hz/4kHz** = potential instability
+- **IIR at 0.5Hz/4kHz** = potential instability (use higher digital gain to help)
 - **Python lacks arithmetic shift** = manual sign extension needed
+- **DC offset on inputs** = Check with multimeter before amplifying
+- **Unused channels** = Power down AND short inputs using `ch_input SHORTED`
 
 ### Debug Features
 - **SERIAL_DEBUG**: Set to 1 in defines.h for verbose output
@@ -514,6 +555,19 @@ usr gain ALL 4      # All channels to 4x gain
 usr ch_power_down 5 OFF    # Power down channel 5
 usr ch_power_down ALL ON   # Power on all channels
 
+# Channel input selection
+usr ch_input 5 SHORTED     # Short channel 5 inputs
+usr ch_input ALL NORMAL    # All channels to normal input
+usr ch_input 0 TEST        # Channel 0 to test signal
+
+# SRB2 reference control
+usr ch_srb2 ALL ON         # Connect all to SRB2 (referenced mode)
+usr ch_srb2 5 OFF          # Disconnect channel 5 from SRB2
+
+# Configure unused channels
+usr ch_power_down 15 OFF   # Power down
+usr ch_input 15 SHORTED    # Short inputs
+
 # Reset everything
 sys adc_reset     # Just ADCs
 sys esp_reboot    # Full system
@@ -526,7 +580,13 @@ sys digitalgain 8       # 8x amplification
 
 # Debug
 spi M 3 0x20 0x00 0x00  # Read ADC ID
-spi M 3 0x25 0x00 0x00  # Read CH1SET register (check gain/power)
+spi M 3 0x25 0x00 0x00  # Read CH1SET register (check all settings)
+
+# Complete unused channel setup example
+usr ch_power_down 14 OFF   # Power down channel 14
+usr ch_input 14 SHORTED    # Short its inputs
+usr ch_power_down 15 OFF   # Power down channel 15  
+usr ch_input 15 SHORTED    # Short its inputs
 ```
 
 ---

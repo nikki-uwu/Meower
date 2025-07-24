@@ -381,6 +381,8 @@ Send these commands to the control port as UTF-8 strings:
 | `usr set_sampling_freq [250\|500\|1000\|2000\|4000]` | Set ADC sampling rate (Hz) | `usr set_sampling_freq 1000` |
 | `usr gain [channel\|ALL] [1\|2\|4\|6\|8\|12\|24]` | Set hardware PGA gain | `usr gain 5 24` or `usr gain ALL 4` |
 | `usr ch_power_down [channel\|ALL] [ON\|OFF]` | Channel power control | `usr ch_power_down 5 OFF` or `usr ch_power_down ALL ON` |
+| `usr ch_input [channel\|ALL] [input_type]` | Select channel input source | `usr ch_input 5 SHORTED` or `usr ch_input ALL TEST` |
+| `usr ch_srb2 [channel\|ALL] [ON\|OFF]` | SRB2 connection control | `usr ch_srb2 5 ON` or `usr ch_srb2 ALL OFF` |
 | **Advanced/Debug Commands** | | |
 | `spi M\|S\|B <len> <bytes...>` | Direct SPI communication | `spi M 3 0x20 0x00 0x00` |
 
@@ -390,7 +392,17 @@ Send these commands to the control port as UTF-8 strings:
 - Filters must be enabled with both master switch (`filters_on`) AND individual filter switches
 - SPI commands: M=Master ADC, S=Slave ADC, B=Both ADCs
 - Board automatically adjusts frame packing when sampling rate changes
-- `ch_power_down OFF`: Places channel in high-impedance state. For best noise reduction, also short unused channels to themselves
+- `ch_power_down OFF`: Places channel in high-impedance state. For best noise reduction, also short unused channels
+- `ch_input` types:
+  - `NORMAL`: Normal electrode input
+  - `SHORTED`: Inputs shorted together (for offset/noise measurements)
+  - `BIAS_MEAS`: Measure bias signal
+  - `MVDD`: Measure supply voltage
+  - `TEMP`: Temperature sensor
+  - `TEST`: Internal test signal
+  - `BIAS_DRP`: Positive electrode is the driver
+  - `BIAS_DRN`: Negative electrode is the driver
+- `ch_srb2 ON`: Connects channel to SRB2 (reference), OFF disconnects
 
 ### 4.4 Reset to Setup Mode
 Need to reconfigure WiFi? Power cycle 4 times - on the 4th power-on, board enters setup mode:
@@ -523,12 +535,16 @@ spi M 3 0x2A 0x00 0x00
 ```
 - 0x2A = Read register 0x0A (CH6SET - channel 5 is the 6th channel, 0-indexed)
 
-**Check Channel Power/Gain Status:**
+**Check Channel Power/Gain/Input Status:**
 ```
 spi M 3 0x25 0x00 0x00
 ```
 - 0x25 = Read CH1SET (channel 0)
-- Response byte 3: bit 7 = power state, bits 6-4 = gain setting
+- Response byte 3: 
+  - Bit 7 = power state (0=on, 1=off)
+  - Bits 6-4 = gain setting
+  - Bit 3 = SRB2 connection
+  - Bits 2-0 = input selection
 
 ### 6.4 Daisy-Chain Register Reading
 
@@ -660,7 +676,10 @@ Response: 30 bytes where:
    - Check DC offset between pins with multimeter before setting gain
 9. **Unused channels**: Power down AND short unused channels to reduce noise
    - `usr ch_power_down 15 OFF` to power down
-   - Short the channel inputs to themselves (command coming soon)
+   - `usr ch_input 15 SHORTED` to short inputs
+10. **Reference setup**: Use SRB2 for common reference
+    - `usr ch_srb2 ALL ON` for referenced mode
+    - `usr ch_srb2 ALL OFF` for differential mode
 
 ---
 ### Previous Versions :3

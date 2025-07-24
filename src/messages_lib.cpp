@@ -791,12 +791,231 @@ void handle_USR(char **ctx, const char * /*orig*/)
         return;
     }
 
-    // Unknown USR command
     // --------------------------------------------------------------------
-    char out[256];
-    snprintf(out, sizeof(out),
-        "usr - got '%s', expected (set_sampling_freq|gain|ch_power_down)", cmd);
-    send_error(out);
+    // Channel Input Selection (usr ch_input <channel|ALL> <input_type>)
+    // Controls CHnSET register bits [2:0]
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "ch_input"))
+    {
+        // Get channel argument
+        char *ch_tok = next_tok(ctx);
+        if (!ch_tok)
+        {
+            send_error("ch_input - missing channel number (0-15 or ALL)");
+            return;
+        }
+
+        // Get input type argument
+        char *input_tok = next_tok(ctx);
+        if (!input_tok)
+        {
+            send_error("ch_input - missing input type (NORMAL|SHORTED|BIAS_MEAS|MVDD|TEMP|TEST|BIAS_DRP|BIAS_DRN)");
+            return;
+        }
+
+        // Parse input type and map to register bits
+        uint8_t input_bits = 0xFF; // Invalid marker
+        
+        if (!strcasecmp(input_tok, "NORMAL"))         input_bits = 0x00; // 000
+        else if (!strcasecmp(input_tok, "SHORTED"))   input_bits = 0x01; // 001
+        else if (!strcasecmp(input_tok, "BIAS_MEAS")) input_bits = 0x02; // 010
+        else if (!strcasecmp(input_tok, "MVDD"))      input_bits = 0x03; // 011
+        else if (!strcasecmp(input_tok, "TEMP"))      input_bits = 0x04; // 100
+        else if (!strcasecmp(input_tok, "TEST"))      input_bits = 0x05; // 101
+        else if (!strcasecmp(input_tok, "BIAS_DRP"))  input_bits = 0x06; // 110
+        else if (!strcasecmp(input_tok, "BIAS_DRN"))  input_bits = 0x07; // 111
+        else
+        {
+            send_error("ch_input - invalid input type");
+            return;
+        }
+
+        // Handle "ALL" or specific channel
+        if (!strcasecmp(ch_tok, "ALL"))
+        {
+            Debug.log("CMD ch_input - setting ALL channels to %s", input_tok);
+            bool all_success = true;
+            
+            // Update all channels by register
+            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+            {
+                // Read both ADCs for this register
+                RegValues current = read_Register_Daisy(reg);
+                
+                // Update both values with new input selection
+                uint8_t new_master = (current.master_reg_byte & 0xF8) | input_bits;
+                uint8_t new_slave = (current.slave_reg_byte & 0xF8) | input_bits;
+                
+                // Write to Master
+                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
+                uint8_t rx[3] = {0};
+                xfer('M', 3, tx, rx);
+                
+                // Write to Slave
+                tx[2] = new_slave;
+                xfer('S', 3, tx, rx);
+                
+                // Verify
+                RegValues verify = read_Register_Daisy(reg);
+                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
+                {
+                    Debug.log("Failed to set input for register 0x%02X", reg);
+                    all_success = false;
+                }
+            }
+            
+            if (all_success)
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: all channels set to %s input", input_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_input - failed to update some channels");
+            }
+        }
+        else
+        {
+            // Parse specific channel number
+            char *endptr;
+            long ch_num = strtol(ch_tok, &endptr, 10);
+            
+            if (*endptr != '\0' || ch_num < 0 || ch_num > 15)
+            {
+                send_error("ch_input - invalid channel (must be 0-15 or ALL)");
+                return;
+            }
+
+            Debug.log("CMD ch_input - setting channel %ld to %s", ch_num, input_tok);
+            
+            // Use helper for single channel
+            if (update_channel_register(ch_num, 0x07, input_bits))
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: channel %ld set to %s input", ch_num, input_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_input - failed to update channel register");
+            }
+        }
+        return;
+    }
+
+    // --------------------------------------------------------------------
+    // SRB2 Connection Control (usr ch_srb2 <channel|ALL> <ON|OFF>)
+    // ON = closed (connected to SRB2), OFF = open
+    // Controls CHnSET register bit [3]
+    // --------------------------------------------------------------------
+    if (!strcasecmp(cmd, "ch_srb2"))
+    {
+        // Get channel argument
+        char *ch_tok = next_tok(ctx);
+        if (!ch_tok)
+        {
+            send_error("ch_srb2 - missing channel number (0-15 or ALL)");
+            return;
+        }
+
+        // Get ON/OFF argument
+        char *state_tok = next_tok(ctx);
+        if (!state_tok)
+        {
+            send_error("ch_srb2 - missing state (ON or OFF)");
+            return;
+        }
+
+        // Parse state - ON means closed (bit=1), OFF means open (bit=0)
+        uint8_t srb2_bit;
+        if (!strcasecmp(state_tok, "ON"))
+        {
+            srb2_bit = 0x08;  // Set bit 3 = closed/connected
+        }
+        else if (!strcasecmp(state_tok, "OFF"))
+        {
+            srb2_bit = 0x00;  // Clear bit 3 = open/disconnected
+        }
+        else
+        {
+            send_error("ch_srb2 - state must be ON or OFF");
+            return;
+        }
+
+        // Handle "ALL" or specific channel
+        if (!strcasecmp(ch_tok, "ALL"))
+        {
+            Debug.log("CMD ch_srb2 - setting ALL channels to SRB2 %s", state_tok);
+            bool all_success = true;
+            
+            // Update all channels by register
+            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+            {
+                // Read both ADCs for this register
+                RegValues current = read_Register_Daisy(reg);
+                
+                // Update both values with SRB2 state
+                uint8_t new_master = (current.master_reg_byte & 0xF7) | srb2_bit;
+                uint8_t new_slave = (current.slave_reg_byte & 0xF7) | srb2_bit;
+                
+                // Write to Master
+                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
+                uint8_t rx[3] = {0};
+                xfer('M', 3, tx, rx);
+                
+                // Write to Slave
+                tx[2] = new_slave;
+                xfer('S', 3, tx, rx);
+                
+                // Verify
+                RegValues verify = read_Register_Daisy(reg);
+                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
+                {
+                    Debug.log("Failed to set SRB2 for register 0x%02X", reg);
+                    all_success = false;
+                }
+            }
+            
+            if (all_success)
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: all channels SRB2 %s", state_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_srb2 - failed to update some channels");
+            }
+        }
+        else
+        {
+            // Parse specific channel number
+            char *endptr;
+            long ch_num = strtol(ch_tok, &endptr, 10);
+            
+            if (*endptr != '\0' || ch_num < 0 || ch_num > 15)
+            {
+                send_error("ch_srb2 - invalid channel (must be 0-15 or ALL)");
+                return;
+            }
+
+            Debug.log("CMD ch_srb2 - setting channel %ld SRB2 to %s", ch_num, state_tok);
+            
+            // Use helper for single channel
+            if (update_channel_register(ch_num, 0x08, srb2_bit))
+            {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "OK: channel %ld SRB2 %s", ch_num, state_tok);
+                send_reply_line(msg);
+            }
+            else
+            {
+                send_error("ch_srb2 - failed to update channel register");
+            }
+        }
+        return;
+    }
 }
 
 
