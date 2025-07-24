@@ -167,12 +167,12 @@ class PlotManager:
         self.nerv_cmap = self._create_nerv_colormap()
         self.im_wavelet = self.ax_wav.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto", 
-            extent=(0, N0, 1, 250), vmin=-120, vmax=-30,
+            extent=(0, N0/250.0, 1, 125), vmin=-120, vmax=-30,
             cmap=self.nerv_cmap, interpolation='bilinear'
         )
         self.im_specgram = self.ax_sg.imshow(
             np.zeros((64, N0)), origin="lower", aspect="auto",
-            extent=(0, N0, 0, 250), vmin=-120, vmax=-30,
+            extent=(0, N0/250.0, 0, 125), vmin=-120, vmax=-30,
             cmap=self.nerv_cmap, interpolation='bilinear'
         )
         
@@ -339,6 +339,17 @@ class PlotManager:
         # Set PSD x-axis to positive frequencies only
         self.ax_psd.set_xlim(0, fs/2)
         
+        # Update Δt y-axis limits based on new sample rate
+        y_min = expected_period_us - 100
+        y_max = expected_period_us + 100
+        if y_min < 0:
+            y_min = 0
+        self.ax_dt.set_ylim(y_min, y_max)
+        
+        # Update wavelet and spectrogram frequency axis limits
+        self.ax_wav.set_ylim(1, fs/2)
+        self.ax_sg.set_ylim(0, fs/2)
+        
         # Create new time axis
         N0 = int(duration * fs)
         xs_sec = np.arange(N0) / fs  # X-axis in seconds
@@ -403,17 +414,10 @@ class PlotManager:
             animated=True
         )
         
-        # Set Δt y-axis limits
-        y_min = expected_period_us - 100
-        y_max = expected_period_us + 100
-        if y_min < 0:
-            y_min = 0
-        self.ax_dt.set_ylim(y_min, y_max)
-        
         # Reset max-hold data
         self.maxhold_data = [None] * 16
         
-        # Update state
+        # Update state - MUST be before draw_full
         self._current_fs = fs
         self._current_duration = duration
         
@@ -483,7 +487,7 @@ class PlotManager:
                     
                 self.dt_line.set_ydata(dt_full)
                 
-                # Set y-axis limits: expected period ±100μs
+                # Ensure y-axis limits are updated for current sample rate
                 y_min = expected_period_us - 100
                 y_max = expected_period_us + 100
                 # Clip minimum to 0 if it would go negative
@@ -491,18 +495,17 @@ class PlotManager:
                     y_min = 0
                 self.ax_dt.set_ylim(y_min, y_max)
                 
-                # Add or update the horizontal reference line at the expected period
-                if not hasattr(self, '_dt_expected_line'):
-                    self._dt_expected_line = self.ax_dt.axhline(
-                        y=expected_period_us, 
-                        color=NERV_ORANGE, 
-                        linestyle='--', 
-                        alpha=0.7,
-                        linewidth=1.5,
-                        animated=True
-                    )
-                else:
-                    self._dt_expected_line.set_ydata([expected_period_us, expected_period_us])
+                # Update or recreate the horizontal reference line
+                if hasattr(self, '_dt_expected_line'):
+                    self._dt_expected_line.remove()
+                self._dt_expected_line = self.ax_dt.axhline(
+                    y=expected_period_us, 
+                    color=NERV_ORANGE, 
+                    linestyle='--', 
+                    alpha=0.7,
+                    linewidth=1.5,
+                    animated=True
+                )
                     
                 # Update axis label to show expected period
                 self.ax_dt.set_ylabel(f"TIMING DEVIATION [µS] (EXPECT: {expected_period_us:.0f})", 
@@ -523,6 +526,19 @@ class PlotManager:
             if y_min < 0:
                 y_min = 0
             self.ax_dt.set_ylim(y_min, y_max)
+            
+            # Update or recreate the horizontal reference line
+            if hasattr(self, '_dt_expected_line'):
+                self._dt_expected_line.remove()
+            self._dt_expected_line = self.ax_dt.axhline(
+                y=expected_period_us, 
+                color=NERV_ORANGE, 
+                linestyle='--', 
+                alpha=0.7,
+                linewidth=1.5,
+                animated=True
+            )
+            
             self.ax_dt.set_ylabel(f"TIMING DEVIATION [µS] (EXPECT: {expected_period_us:.0f})",
                                  fontsize=10, fontweight='bold', color=NERV_AMBER)
         
@@ -661,6 +677,7 @@ class PlotManager:
                 self.psd_lines[idx].set_visible(False)
                 self.psd_max[idx].set_visible(False)
                     
+        # Ensure PSD x-axis shows correct frequency range
         self.ax_psd.set_xlim(0, fs / 2)
         
         # Perform fast blit update

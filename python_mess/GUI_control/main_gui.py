@@ -101,8 +101,8 @@ class App(tk.Tk):
         self.wifi_console = self._build_io_block(2, "NETWORK CONTROL", self._wifi_controls)
         
         # ------- Signal backend (now safe because fs_var & dur_var exist) --------
-        self.sig_cfg = SigConfig(sample_rate=self.fs_var.get(),
-                                 buf_secs   =self.dur_var.get(),
+        self.sig_cfg = SigConfig(sample_rate=int(self.fs_var.get()),
+                                 buf_secs   =int(self.dur_var.get()),
                                  n_ch       =16)
         self.sig     = SignalWorker(self.sig_cfg,
                                     data_port=int(self.data_port_var.get()))
@@ -243,8 +243,8 @@ class App(tk.Tk):
         # Fs & Record
         self._create_label(ctrl, "SAMPLE RATE", r, 0)
         self.fs_var  = tk.StringVar(value="250")
-        fs_entry = self._create_entry(ctrl, self.fs_var, r, 1, width=8)
-        fs_entry.insert(0, self.fs_var.get())
+        self.fs_entry = self._create_entry(ctrl, self.fs_var, r, 1, width=8)
+        self.fs_entry.insert(0, self.fs_var.get())
         self._create_label(ctrl, "HZ", r, 2, sticky="w")
     
         self._create_label(ctrl, "BUFFER", r, 3)
@@ -281,7 +281,7 @@ class App(tk.Tk):
         # NFFT
         self._create_label(ctrl, "FFT POINTS", r, 0)
         self.nfft_var = tk.IntVar(value=512)
-        initial_max = int(self.fs_var.get()) * int(self.dur_var.get())
+        initial_max = int(float(self.fs_var.get())) * int(float(self.dur_var.get()))
         self.nfft_sld = self._create_nerv_scale(
             ctrl, from_=32, to=initial_max, variable=self.nfft_var,
             orient="horizontal",
@@ -599,7 +599,7 @@ class App(tk.Tk):
         
         # Read directly from Entry widget instead of StringVar
         dur_entry_text = self.dur_entry.get()
-        fs_entry_text = self.fs_var.get()  # fs still works with StringVar
+        fs_entry_text = self.fs_entry.get()  # Read from Entry widget directly
         
         if DEBUG:
             print(f"[MAIN_GUI] Raw values: fs='{fs_entry_text}', dur='{dur_entry_text}'")
@@ -619,6 +619,7 @@ class App(tk.Tk):
         
         # Update the StringVar to match what user actually entered
         self.dur_var.set(str(new_dur))
+        self.fs_var.set(str(new_fs))
         
         # 1 ─ Pause data reception and update buffer without killing worker
         if self.sig:
@@ -680,6 +681,9 @@ class App(tk.Tk):
             self.nfft_label.config(text=str(total_samples))
         else:
             self.nfft_label.config(text=str(self.nfft_var.get()))
+        
+        # Ensure the NFFT slider updates immediately
+        self.nfft_sld.update_idletasks()
         
         # NEW: Update spectrogram window size slider maximum
         spec_max_win = total_samples // 2
@@ -1109,6 +1113,7 @@ class App(tk.Tk):
         # Update plots using PlotManager
         data = snap["data"]  # (N,16)
         timestamps = snap.get("time", None)  # Get timestamps if available
+        # Always use the current configuration values
         fs_val = self.sig_cfg.sample_rate
         duration = self.sig_cfg.buf_secs
         
