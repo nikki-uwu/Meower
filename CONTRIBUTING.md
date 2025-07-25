@@ -64,7 +64,7 @@ If you find bugs, you can:
 
 All contributions will be licensed under the same terms as the project:
 - Firmware/Software: MIT OR Apache-2.0 
-- Hardware: CERN-OHL-P-2.0
+- Hardware: CERN-OHL-S-2.0
 
 By submitting a PR, you agree to license your contributions under these terms.
 
