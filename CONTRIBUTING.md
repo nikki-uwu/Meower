@@ -6,14 +6,12 @@ Thanks for your interest in contributing! This document is still being developed
 
 ## Product Under Development
 
-This project is actively being developed. If you notice any patterns, toolkits, or practices that could be improved, please let me know! I'm open to suggestions for:
+This project is actively being developed. If you notice any patterns, toolkits, or practices that could be improved, please let me know. I'm open to suggestions for:
 - Better libraries or frameworks
-- More efficient design patterns  
+- More efficient design patterns
 - Performance optimizations
 - Code structure improvements
 - Anything that makes the project better
-
-Don't hesitate to suggest improvements - we're all learning here!
 
 ## How to Contribute
 
@@ -29,12 +27,14 @@ All contributions should be made through pull requests. During the PR review, we
 - Document any modifications clearly
 
 ### Python Code
-- Add clear comments - if unsure, use AI to help document your code
+- Add clear comments - if unsure/lazy, use AI to help document your code
 - Focus on performance optimization:
   - Use best practices for plotting
   - Implement multithreading where applicable
   - Optimize UDP and real-time operations
 - Well-formatted, visually aligned code
+
+and feel free to tell me my code is bad.
 
 ## License Compatibility
 
@@ -63,7 +63,7 @@ If you find bugs, you can:
 ## Licensing of Your Contributions
 
 All contributions will be licensed under the same terms as the project:
-- Firmware/Software: MIT OR Apache-2.0  
+- Firmware/Software: MIT OR Apache-2.0 
 - Hardware: CERN-OHL-P-2.0
 
 By submitting a PR, you agree to license your contributions under these terms.
