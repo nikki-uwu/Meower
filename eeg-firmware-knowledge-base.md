@@ -11,6 +11,7 @@ This document consolidates ALL technical knowledge, implementation details, and 
 3. **Keep ADC sense pin on ADC1 only** - ADC2 conflicts with WiFi and will cause crashes
 4. **Quad-tap power for recovery** - If board acts dead, 4 power cycles < 5s cumulative triggers captive portal
 5. **Send "WOOF_WOOF" every ≤10 seconds** - Board drops to IDLE after 10s without keep-alive
+6. **SPI/USR commands stop streaming** - Any SPI or USR command via WiFi immediately stops continuous mode because ADS1299 can't receive register commands during continuous data mode
 
 ---
 
@@ -45,6 +46,8 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 - **Power**: ~400mW typical, 470mW max @ 4kHz
 - **PGA Gain**: Voltage amplification in analog domain before ADC conversion
 - **DC Offset Warning**: Check DC voltage between input pins before setting gain - small signals on DC offsets will saturate when amplified
+- **Data format**: Channel data in big-endian, timestamps and battery voltage in little-endian
+- **CPU locked to 160MHz**: At 80MHz there's not enough headroom for 4kHz processing despite only +30mW difference
 
 ---
 
@@ -74,7 +77,7 @@ Reset: After 1 second, flag changes "a"→"b" (disarmed)
 6. SDATAC command (exit continuous mode)
 7. Enable internal reference (CONFIG3 = 0xE0)
 8. Configure master clock output to slave
-9. Wait 50ms for slave clock lock
+9. **Wait 50ms for slave clock lock** - CRITICAL: Slave ADC needs time to lock onto master's clock signal
 10. Enable test signal (1Hz square wave)
 11. Board initializes at 250 Hz with 5-frame packing (50 packets/sec)
 12. SPI remains at 2 MHz until `sys start_cnt` switches to 16 MHz
@@ -203,33 +206,47 @@ The firmware dynamically adjusts frames per packet to target 50 packets/second o
 ## 5. Digital Signal Processing Pipeline
 
 ### Overview
-All filters run at 160MHz with fixed-point math. Global enable + individual enables.
+All processing runs at 160MHz with fixed-point math. Global enable + individual filter enables.
 
-### Filter Chain (Sequential, In-Place)
+### Complete Processing Chain (Sequential, In-Place)
 ```
-Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120] → Output
-         ↓                 ↓              ↓                ↓
-      Optional          Optional       Optional         Optional
+Input (54 bytes) → [ADC Parse] → [<<8 shift] → [Digital Gain] → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120] → [>>8 shift] → Output (48 bytes)
+                      ↓              ↓              ↓                ↓                ↓               ↓                  ↓               ↓
+                 Remove preambles  24→32 bits    Bit shift      Optional        Optional        Optional          Optional         32→24 bits
 ```
 
-### 1. FIR Equalizer (7-tap)
-- **Purpose**: Compensates ADS1299 sinc³ decimation rolloff
-- **Response**: Flat ±0dB from DC to 0.8×Nyquist
-- **Shift**: 30 bits output scaling
-- **Bypass**: True pass-through coefficients
+### Processing Steps:
 
-### 2. DC Blocker (2nd order Butterworth IIR)
-- **Cutoffs**: 0.5, 1, 2, 4, 8 Hz (runtime selectable)
-- **Coefficient sets**: 25 (5 sample rates × 5 cutoffs)
-- **Note**: 0.5Hz cutoff @ 4kHz sampling can become unstable (resonator behavior)
+1. **ADC Sample Parsing**: Remove two 3-byte preambles (54→48 bytes)
 
-### 3. Notch Filters (4th order, cascaded biquads)
-- **50/60 Hz**: Q≈35, -40dB rejection
-- **100/120 Hz**: Same specs for harmonics
-- **Coefficient sets**: 10 each (5 rates × 2 regions)
+2. **Bit Shift Up (+8)**: Convert 24-bit to 32-bit with 8-bit headroom for DSP
+
+3. **Digital Gain**: Additional bit shifting (0-8 bits) for signal amplification
+
+4. **FIR Equalizer (7-tap)**:
+   - Purpose: Compensates ADS1299 sinc³ decimation rolloff
+   - Response: Flat ±0dB from DC to 0.8×Nyquist
+   - Shift: 30 bits output scaling
+   - Bypass: True pass-through coefficients
+
+5. **DC Blocker (2nd order Butterworth IIR)**:
+   - Cutoffs: 0.5, 1, 2, 4, 8 Hz (runtime selectable)
+   - Coefficient sets: 25 (5 sample rates × 5 cutoffs)
+   - Note: 0.5Hz cutoff @ 4kHz sampling can become unstable (resonator behavior)
+
+6. **Notch Filters (4th order, cascaded biquads)**:
+   - 50/60 Hz: Q≈35, -40dB rejection
+   - 100/120 Hz: Same specs for harmonics
+   - Coefficient sets: 10 each (5 rates × 2 regions)
+
+7. **Bit Shift Down (-8)**: Convert back from 32-bit to 24-bit for transmission
 
 ### Filter Math Details
 - **Data type**: int32_t[16] throughout
+- **Signal scaling**: All signals get +8 bit shift (24→32 bits) to occupy more of the dynamic range for filter precision
+  - This is fixed 8-bit shift, not adaptive scaling
+  - Critical for filter stability at extreme settings (0.5Hz @ 4kHz)
+  - Without this, filters can break and add DC instead of removing it
 - **Rounding**: Away from zero to prevent DC bias
 - **Headroom**: All stages stay within ±31 bits
 - **Reset**: Toggle off→on clears IIR states in <1ms
@@ -244,7 +261,10 @@ Input → [FIR Equalizer] → [DC Blocker] → [Notch 50/60] → [Notch 100/120]
 
 ### Clock Management (CENTRALIZED)
 
-**Critical Change**: SPI clock management is now **centralized** in `continuous_mode_start_stop()`. This is the **ONLY** function that should change SPI clock speeds.
+**Critical**: `continuous_mode_start_stop()` is the **ONLY** function that:
+- Changes SPI clock speeds (2 MHz ↔ 16 MHz)
+- Controls continuous mode state (START signal + RDATAC/SDATAC commands)
+- Ensures proper state for all register operations
 
 **Clock States**:
 ```c
@@ -254,21 +274,10 @@ Mode:          SPI_MODE1 (CPOL=0, CPHA=1)
 ```
 
 **Why Different Speeds?**:
-- **2 MHz for configuration**: ADS1299 register operations become unstable above 4 MHz. Using 2 MHz guarantees reliable register reads/writes.
-- **16 MHz for streaming**: Maximum stable speed for continuous data transfer, providing best throughput for real-time EEG data.
+- **2 MHz for configuration**: ADS1299 register operations become unstable above 4 MHz
+- **16 MHz for streaming**: Maximum stable speed for continuous data transfer
 
-**Functions That Previously Changed Clocks** (now removed):
-- `ads1299_full_reset()` - relies on continuous_mode_start_stop()
-- `BCI_preset()` - relies on continuous_mode_start_stop()
-- `wait_until_ads1299_is_ready()` - relies on continuous_mode_start_stop()
-- `read_Register_Daisy()` - uses current clock setting
-- `handle_SPI()` - uses current clock setting
-- `modify_register_bits()` - uses current clock setting
-
-**Clock Invariant**:
-- When `continuousReading == false` → SPI clock is 2 MHz
-- When `continuousReading == true` → SPI clock is 16 MHz
-- All functions can assume the correct clock is already set
+**Clock Invariant**: All functions can assume the correct clock is already set based on continuous mode state
 
 ### Chip Select Control
 - **Method**: Direct register writes via WRITE_PERI_REG
@@ -334,12 +343,12 @@ When reading a single register in daisy-chain mode:
 
 ### Command Safety
 **Command Behavior During Continuous Mode**:
-- **SYS commands**: Execute without interrupting data flow. Filters, digital gain, network settings, and other parameters update in real-time while streaming continues.
-- **SPI and USR commands**: Automatically call `continuous_mode_start_stop(LOW)` before executing. This ensures:
-  - Proper SPI clock (2 MHz) for configuration
-  - ADCs exit RDATAC mode
-  - No data corruption during register access
-- **Clock Speed Rationale**: Register operations above 4 MHz can be unstable on ADS1299. The firmware uses 2 MHz for all configuration operations to guarantee reliable communication, while data streaming runs at 16 MHz for maximum throughput.
+- **SYS commands**: Execute without interrupting data flow. Filters, digital gain, network settings update in real-time
+- **SPI and USR commands**: Automatically stop continuous mode before executing because:
+  - ADS1299 cannot receive register commands during continuous data mode (RDATAC)
+  - Must exit to command mode (SDATAC) first
+  - Requires 2 MHz clock for stable register operations
+- **Clock Speed Rationale**: Register operations above 4 MHz unstable, streaming uses 16 MHz for throughput
 
 ### System Commands (Can be used during continuous mode)
 ```
@@ -368,44 +377,6 @@ usr ch_power_down <channel|ALL> <ON|OFF>
 usr ch_input <channel|ALL> <input_type>
 usr ch_srb2 <channel|ALL> <ON|OFF>
 ```
-- `set_sampling_freq`: Changes ADS1299 sampling rate
-  - Automatically stops continuous mode first
-  - Updates CONFIG1 register bits [2:0] on both ADCs
-  - Validates input before applying
-  
-- `gain`: Sets hardware PGA gain for channels
-  - Channel: 0-15 (0-7 master, 8-15 slave) or ALL
-  - Gain values: 1, 2, 4, 6, 8, 12, 24x
-  - Updates CHnSET register bits [6:4]
-  - Examples: `usr gain 5 24` or `usr gain ALL 4`
-  
-- `ch_power_down`: Controls channel power state
-  - Channel: 0-15 or ALL
-  - ON = power on (normal operation)
-  - OFF = power down (high impedance)
-  - Updates CHnSET register bit [7]
-  - Examples: `usr ch_power_down 5 OFF` or `usr ch_power_down ALL ON`
-  
-- `ch_input`: Selects channel input source
-  - Channel: 0-15 or ALL
-  - Updates CHnSET register bits [2:0]
-  - Input types:
-    - NORMAL: Normal electrode input (000)
-    - SHORTED: Inputs shorted together (001)
-    - BIAS_MEAS: Measure bias signal (010)
-    - MVDD: Measure supply voltage (011)
-    - TEMP: Temperature sensor (100)
-    - TEST: Internal test signal (101)
-    - BIAS_DRP: Positive electrode driver (110)
-    - BIAS_DRN: Negative electrode driver (111)
-  - Examples: `usr ch_input 5 SHORTED` or `usr ch_input ALL TEST`
-  
-- `ch_srb2`: Controls SRB2 (reference) connection
-  - Channel: 0-15 or ALL
-  - ON = closed (connected to SRB2)
-  - OFF = open (disconnected)
-  - Updates CHnSET register bit [3]
-  - Examples: `usr ch_srb2 5 ON` or `usr ch_srb2 ALL OFF`
 
 ### SPI Commands (Stop continuous mode before executing)
 ```
@@ -413,48 +384,6 @@ spi M|S|B|T <len> <byte0> <byte1> ...
 M=Master, S=Slave, B=Both, T=Test
 Max 256 bytes per transaction
 ```
-
-### Helper Functions
-
-**modify_register_bits()**:
-- Helper for safe register modification on both ADCs
-- Reads current value from both ADCs using read_Register_Daisy()
-- Modifies only specified bits using mask
-- Writes back to both ADCs
-- Verifies the operation succeeded
-- Includes debug logging
-
-**update_channel_register()**:
-- Helper for channel-specific register updates
-- Maps channel number (0-15) to correct ADC and register
-- Always uses read_Register_Daisy() for reading
-- Handles master/slave selection automatically
-- Returns true if update successful
-- Used by gain and ch_power_down commands
-
-**Channel Control (CHnSET Registers)**:
-- CHnSET registers (0x05-0x0C) control individual channels
-- Channels 0-7 on Master ADC, 8-15 on Slave ADC
-- Register bit layout:
-  - Bit [7]: Power down control (0=normal, 1=power down)
-  - Bits [6:4]: PGA gain (000=1x, 001=2x, 010=4x, 011=6x, 100=8x, 101=12x, 110=24x)
-  - Bit [3]: SRB2 connection (0=open, 1=closed)
-  - Bits [2:0]: Input mux selection
-    - 000: Normal electrode input
-    - 001: Inputs shorted together
-    - 010: Bias measurement
-    - 011: Supply measurement (MVDD)
-    - 100: Temperature sensor
-    - 101: Test signal
-    - 110: Bias drive positive (BIAS_DRP)
-    - 111: Bias drive negative (BIAS_DRN)
-- Default values:
-  - Normal mode: 0x05 (test signal, gain 1x, SRB2 open, powered on)
-  - BCI mode: 0x08 (normal electrode input, gain 1x, SRB2 closed, powered on)
-- Common configurations:
-  - Unused channel: Power down + shorted inputs (0x81)
-  - Differential mode: Normal input, SRB2 open (0x00 with desired gain)
-  - Referenced mode: Normal input, SRB2 closed (0x08 with desired gain)
 
 ---
 
@@ -506,6 +435,7 @@ esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Deepest power-save mode
 // Prevents -1 underflow if ISR updates timestamp mid-calculation
 return (now >= then) ? (now - then) : 0;
 ```
+**Race condition**: When checking timeouts, code reads millis() then compares to lastRxMs. If WiFi ISR updates lastRxMs between these operations, the subtraction underflows to 0xFFFFFFFF. This function returns 0 instead of -1, preventing false timeouts.
 
 ### Battery_Sense Class
 - **IIR filter**: α=0.05 default (20x jitter reduction)
