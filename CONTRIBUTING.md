@@ -4,6 +4,17 @@ Thanks for your interest in contributing! This document is still being developed
 
 **Original author**: Gleb Manokhin (nikki)
 
+## Product Under Development
+
+This project is actively being developed. If you notice any patterns, toolkits, or practices that could be improved, please let me know! I'm open to suggestions for:
+- Better libraries or frameworks
+- More efficient design patterns  
+- Performance optimizations
+- Code structure improvements
+- Anything that makes the project better
+
+Don't hesitate to suggest improvements - we're all learning here!
+
 ## How to Contribute
 
 All contributions should be made through pull requests. During the PR review, we'll discuss what was done and I may ask for changes.
@@ -28,8 +39,17 @@ All contributions should be made through pull requests. During the PR review, we
 ## License Compatibility
 
 When including third-party code, only use code with these licenses:
-- ✅ **Allowed**: MIT, Apache 2.0, BSD
-- ❌ **Not allowed**: GPL (any version), LGPL, No license, Non-commercial licenses
+
+**✅ Allowed:**
+- MIT
+- Apache 2.0
+- BSD
+
+**❌ Not allowed:**
+- GPL (any version)
+- LGPL
+- No license
+- Non-commercial licenses
 
 This ensures compatibility with our MIT/Apache dual-licensing.
 
