@@ -107,9 +107,16 @@ DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
 ```
 
 ### Discovery & Keep-Alive Protocol
-- **Beacon**: "MEOW_MEOW" (9 bytes) every 1 second when no peer found
-- **Discovery/Keep-alive**: "WOOF_WOOF" (9 bytes) serves dual purpose
-- **Watchdog refresh**: Any valid packet refreshes watchdog (WOOF_WOOF, commands) except MEOW_MEOW echoes
+1. **Board broadcasts**: "MEOW_MEOW" (9 bytes) to 255.255.255.255 on control port every 1 second when no PC found
+2. **PC responds**: Sends "WOOF_WOOF" to board's IP on control port
+3. **Board captures PC IP**: First WOOF_WOOF saves source IP as PC address
+4. **Keep-alive required**: PC must send "WOOF_WOOF" every <10 seconds to maintain connection
+5. **Connection lost**: If no WOOF_WOOF for 10 seconds, board drops to IDLE and restarts MEOW_MEOW broadcasts
+
+**Notes**:
+- Control port is configurable (default 5000)
+- Board ignores its own MEOW_MEOW echoes
+- Any valid packet refreshes watchdog (WOOF_WOOF, commands) except MEOW_MEOW echoes
 
 ### Timeout Hierarchy
 1. **10s streaming watchdog**: No data → drop STREAMING to IDLE
@@ -164,9 +171,10 @@ Big-endian 24-bit    8µs timer units
    - Sends via WiFi
 
 ### Queue Design
-- **5 slots** = 280ms buffer @ 500Hz
-- **ADC never blocks**: Skips enqueue if full
-- **FIFO order** guaranteed by FreeRTOS
+- **5 slots**: Each holds one complete data packet (up to 28 ADC frames with timestamps)
+- **ADC never blocks**: If queue full, skips enqueue and continues processing
+- **WiFi headroom**: 5 buffered packets allow WiFi to recover from hiccups without data loss
+- **FIFO order**: Guaranteed by FreeRTOS
 
 ### Adaptive Packet Sizing
 
@@ -217,7 +225,7 @@ Input (54 bytes) → [ADC Parse] → [<<8 shift] → [Digital Gain] → [FIR Equ
 
 ### Processing Steps:
 
-1. **ADC Sample Parsing**: Remove two 3-byte preambles (54→48 bytes)
+1. **ADC Sample Parsing**: Strip two 3-byte preambles from raw 54-byte frame (27 bytes per ADC) to get 48 bytes of channel data
 
 2. **Bit Shift Up (+8)**: Convert 24-bit to 32-bit with 8-bit headroom for DSP
 
