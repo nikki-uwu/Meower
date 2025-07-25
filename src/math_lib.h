@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2025 Gleb Manokhin (nikki)
+// Project: Meower EEG/BCI Board
+
 #ifndef MATH_LIB_H
 #define MATH_LIB_H
 
