@@ -123,16 +123,6 @@ After configuration, the LED shows board status:
 - Channels 0-7: Master ADS1299 (U1)
 - Channels 8-15: Slave ADS1299 (U2)
 
-**Standard 10-20 System Mapping:**
-- Ch0 → Fp1, Ch8 → Fp2
-- Ch1 → F3, Ch9 → F4
-- Ch2 → C3, Ch10 → C4
-- Ch3 → P3, Ch11 → P4
-- Ch4 → O1, Ch12 → O2
-- Ch5 → F7, Ch13 → F8
-- Ch6 → T3, Ch14 → T4
-- Ch7 → T5, Ch15 → T6
-
 ### 3.2 UDP Packet Structure
 
 The board always sends data in a single UDP datagram (no fragmentation). You can safely read with a 1500-byte buffer.
@@ -340,11 +330,11 @@ Example: With digital gain=8, a ±600mV signal will clip/overflow
 ### 4.2 Discovery & Connection Flow
 
 1. **Board powers on** → Connects to configured WiFi network
-2. **Broadcasts "MEOW_MEOW"** on UDP port 5000 every second
-3. **PC software listens** on port 5000 and responds with "WOOF_WOOF"
-4. **Board captures PC's IP** from the WOOF_WOOF packet source
+2. **Board broadcasts "MEOW_MEOW"** to 255.255.255.255 on control port every second
+3. **PC software listens** on control port and responds with "WOOF_WOOF" to board's IP
+4. **Board captures PC's IP** from the WOOF_WOOF packet source (first time only)
 5. **Ready to stream** → Send `sys start_cnt` to begin
-6. **Maintain connection** → PC sends "WOOF_WOOF" keepalive every <10 seconds
+6. **Maintain connection** → PC sends "WOOF_WOOF" every <10 seconds or board returns to broadcasting
 
 ### 4.3 Command Reference
 Send these commands to the control port as UTF-8 strings:
@@ -452,11 +442,11 @@ The board processes incoming signals through a digital filter chain consisting o
 - **Purpose**: Real-time recording cleanup; heavier processing can be done offline
 
 ### 5.5 Filter Coefficient Generation
-All filter coefficients are pre-calculated by a Python script (included in source) that:
-- Generates optimal coefficients for each sampling rate (250-4000 Hz)
+All filter coefficients are pre-calculated by a Python script that:
+- Generates coefficients for each sampling rate (250-4000 Hz)
 - Scales to 32-bit fixed-point for integer math
 - Ensures unity gain at passband to prevent clipping
-- Can be regenerated if you modify fs, fc, or Q parameters
+- The generation script is included as comments in math_lib.h
 
 ### 5.6 Important IIR Filter Behavior
 **Spike Recovery**: IIR filters can ring when hit with large transients (like electrode pops or movement artifacts). If you see:
@@ -630,8 +620,10 @@ Response: 30 bytes where:
 - **Digital Gain**: 1, 2, 4, 8, 16, 32, 64, 128, 256 (bit shifting for DSP precision)
 
 ### 7.2 Performance
-- **Power Consumption**: ~400mW (typical during streaming)
-- **Battery Life**: 10+ hours with 1100mAh LiPo
+- **Power Consumption**: ~400mW @ 250Hz, ~470mW @ 4kHz
+- **Battery Life** (1100mAh LiPo):
+  - 10+ hours at 250 Hz (~400mW)
+  - 8+ hours at 4000 Hz (~470mW)
 - **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
 - **WiFi Range**: 30m typical indoor
 - **Gain Recommendations**:
