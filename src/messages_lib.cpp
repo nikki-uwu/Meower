@@ -86,20 +86,31 @@ static bool update_channel_register(int channel, uint8_t mask, uint8_t new_bits)
     return (verified_val == new_val);
 }
 
+// Helper to update all channel registers (CH1SET through CH8SET) on both ADCs
+// Uses modify_register_bits internally for each channel register
+static bool update_all_channels(uint8_t mask, uint8_t new_bits)
+{
+    bool all_success = true;
+    
+    // Loop through all channel registers (0x05=CH1SET to 0x0C=CH8SET)
+    for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+    {
+        if (!modify_register_bits(reg, mask, new_bits))
+        {
+            all_success = false;
+        }
+    }
+    
+    return all_success;
+}
+
 // Register Read-Modify-Write Helper
 // Reads a register from both ADCs, modifies specific bits, writes back
 // Returns true if successful, false if verification failed
-static bool modify_register_bits(uint8_t reg_addr, uint8_t mask, uint8_t new_bits, 
-                                const char* reg_name = nullptr)
+static bool modify_register_bits(uint8_t reg_addr, uint8_t mask, uint8_t new_bits)
 {
     // Read current values
     RegValues current = read_Register_Daisy(reg_addr);
-    
-    if (reg_name)
-    {
-        Debug.log("Current %s - Master: 0x%02X, Slave: 0x%02X", 
-                  reg_name, current.master_reg_byte, current.slave_reg_byte);
-    }
 
     // Update bits (preserve bits not in mask)
     uint8_t new_master = (current.master_reg_byte & ~mask) | (new_bits & mask);
@@ -118,13 +129,6 @@ static bool modify_register_bits(uint8_t reg_addr, uint8_t mask, uint8_t new_bit
     RegValues verify = read_Register_Daisy(reg_addr);
     bool success = (verify.master_reg_byte == new_master) && 
                    (verify.slave_reg_byte == new_slave);
-
-    if (reg_name)
-    {
-        Debug.log("Updated %s - Master: 0x%02X, Slave: 0x%02X %s", 
-                  reg_name, verify.master_reg_byte, verify.slave_reg_byte,
-                  success ? "[OK]" : "[FAILED]");
-    }
 
     return success;
 }
@@ -546,7 +550,7 @@ void handle_USR(char **ctx, const char * /*orig*/)
         Debug.log("CMD set_sampling_freq - setting to %d Hz", freq);
 
         // Use helper to update CONFIG1 register bits [2:0]
-        bool success = modify_register_bits(0x01, 0x07, dr_bits, "CONFIG1");
+        bool success = modify_register_bits(0x01, 0x07, dr_bits);
 
         if (success)
         {
@@ -608,37 +612,8 @@ void handle_USR(char **ctx, const char * /*orig*/)
         if (!strcasecmp(ch_tok, "ALL"))
         {
             Debug.log("CMD gain - setting ALL channels to gain %d", gain_val);
-            bool all_success = true;
             
-            // Update all channels by register (more efficient)
-            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
-            {
-                // Read both ADCs for this register
-                RegValues current = read_Register_Daisy(reg);
-                
-                // Update both values with new gain
-                uint8_t new_master = (current.master_reg_byte & 0x8F) | gain_bits;
-                uint8_t new_slave = (current.slave_reg_byte & 0x8F) | gain_bits;
-                
-                // Write to Master
-                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
-                uint8_t rx[3] = {0};
-                xfer('M', 3, tx, rx);
-                
-                // Write to Slave
-                tx[2] = new_slave;
-                xfer('S', 3, tx, rx);
-                
-                // Verify
-                RegValues verify = read_Register_Daisy(reg);
-                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
-                {
-                    Debug.log("Failed to set gain for register 0x%02X", reg);
-                    all_success = false;
-                }
-            }
-            
-            if (all_success)
+            if (update_all_channels(0x70, gain_bits))
             {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "OK: all channels set to gain %d", gain_val);
@@ -721,37 +696,8 @@ void handle_USR(char **ctx, const char * /*orig*/)
         if (!strcasecmp(ch_tok, "ALL"))
         {
             Debug.log("CMD ch_power_down - setting ALL channels to %s", state_tok);
-            bool all_success = true;
             
-            // Update all channels by register
-            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
-            {
-                // Read both ADCs for this register
-                RegValues current = read_Register_Daisy(reg);
-                
-                // Update both values with power state
-                uint8_t new_master = (current.master_reg_byte & 0x7F) | power_bit;
-                uint8_t new_slave = (current.slave_reg_byte & 0x7F) | power_bit;
-                
-                // Write to Master
-                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
-                uint8_t rx[3] = {0};
-                xfer('M', 3, tx, rx);
-                
-                // Write to Slave
-                tx[2] = new_slave;
-                xfer('S', 3, tx, rx);
-                
-                // Verify
-                RegValues verify = read_Register_Daisy(reg);
-                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
-                {
-                    Debug.log("Failed to set power state for register 0x%02X", reg);
-                    all_success = false;
-                }
-            }
-            
-            if (all_success)
+            if (update_all_channels(0x80, power_bit))
             {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "OK: all channels powered %s", state_tok);
@@ -834,37 +780,8 @@ void handle_USR(char **ctx, const char * /*orig*/)
         if (!strcasecmp(ch_tok, "ALL"))
         {
             Debug.log("CMD ch_input - setting ALL channels to %s", input_tok);
-            bool all_success = true;
             
-            // Update all channels by register
-            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
-            {
-                // Read both ADCs for this register
-                RegValues current = read_Register_Daisy(reg);
-                
-                // Update both values with new input selection
-                uint8_t new_master = (current.master_reg_byte & 0xF8) | input_bits;
-                uint8_t new_slave = (current.slave_reg_byte & 0xF8) | input_bits;
-                
-                // Write to Master
-                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
-                uint8_t rx[3] = {0};
-                xfer('M', 3, tx, rx);
-                
-                // Write to Slave
-                tx[2] = new_slave;
-                xfer('S', 3, tx, rx);
-                
-                // Verify
-                RegValues verify = read_Register_Daisy(reg);
-                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
-                {
-                    Debug.log("Failed to set input for register 0x%02X", reg);
-                    all_success = false;
-                }
-            }
-            
-            if (all_success)
+            if (update_all_channels(0x07, input_bits))
             {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "OK: all channels set to %s input", input_tok);
@@ -947,37 +864,8 @@ void handle_USR(char **ctx, const char * /*orig*/)
         if (!strcasecmp(ch_tok, "ALL"))
         {
             Debug.log("CMD ch_srb2 - setting ALL channels to SRB2 %s", state_tok);
-            bool all_success = true;
             
-            // Update all channels by register
-            for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
-            {
-                // Read both ADCs for this register
-                RegValues current = read_Register_Daisy(reg);
-                
-                // Update both values with SRB2 state
-                uint8_t new_master = (current.master_reg_byte & 0xF7) | srb2_bit;
-                uint8_t new_slave = (current.slave_reg_byte & 0xF7) | srb2_bit;
-                
-                // Write to Master
-                uint8_t tx[3] = {static_cast<uint8_t>(0x40 | reg), 0x00, new_master};
-                uint8_t rx[3] = {0};
-                xfer('M', 3, tx, rx);
-                
-                // Write to Slave
-                tx[2] = new_slave;
-                xfer('S', 3, tx, rx);
-                
-                // Verify
-                RegValues verify = read_Register_Daisy(reg);
-                if (verify.master_reg_byte != new_master || verify.slave_reg_byte != new_slave)
-                {
-                    Debug.log("Failed to set SRB2 for register 0x%02X", reg);
-                    all_success = false;
-                }
-            }
-            
-            if (all_success)
+            if (update_all_channels(0x08, srb2_bit))
             {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "OK: all channels SRB2 %s", state_tok);
