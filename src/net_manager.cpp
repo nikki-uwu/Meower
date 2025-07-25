@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2025 Gleb Manokhin (nikki)
-// Project: Meower EEG/BCI Board
+// Project: Meower
 
 #include <Arduino.h>
 #include <cstring>
