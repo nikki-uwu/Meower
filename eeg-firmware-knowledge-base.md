@@ -40,7 +40,7 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 - **Frame structure**: 27 bytes per ADC (3 preamble + 24 channel data)
 
 ### Electrical Design Notes
-- **Battery voltage divider**: Calibrated scale factor = 0.01235 (current implementation)
+- **Battery voltage divider**: Calibrated scale factor = 0.001235 (current implementation)
 - **Pull-down on MISO**: Prevents signal decay when last bit = 1
 - **CS timing**: Uses direct register writes (40ns edges) vs digitalWrite (1.2µs)
 - **Power**: ~400mW typical, 470mW max @ 4kHz
