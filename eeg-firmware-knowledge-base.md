@@ -399,7 +399,7 @@ Max 256 bytes per transaction
 
 ### CPU & Power
 - **CPU locked**: 160MHz (only +30mW vs 80MHz but huge headroom)
-- **Power**: 400mW @ 500Hz, 470mW @ 4kHz
+- **Power**: 400mW @ 250Hz, 470mW @ 4kHz
 - **Battery**: 10+ hours on 1100mAh LiPo
 
 ### Critical Timing
