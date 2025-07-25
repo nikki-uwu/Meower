@@ -492,6 +492,7 @@ void setup()
     // Blocking rules:
     //   - ADC and DSP task never blocks. If sender task is too slow and adc task cant write it will skip writing right away
     //   - Data Transmittion task blocks until at least one item is inside the que and if ADC/DSP task is running
+    // Queue sized for worst case (28 frames)
     adcFrameQue = xQueueCreate(5,                                            // 5 packets buffer (content varies by sampling rate)
                                ADC_FULL_FRAME_SIZE * MAX_FRAMES_PER_PACKET); // size of one complete packet (max possible) - battery not included
 
