@@ -1,7 +1,7 @@
 # Meower Hardware Design Files
 
-![PCB Top View](images/2025_07_29_pcb_top.png)
-![PCB Bottom View](images/2025_07_29_pcb_bottom.png)
+![PCB Top View](../images/2025_07_29_pcb_top.png)
+![PCB Bottom View](../images/2025_07_29_pcb_bottom.png)
 
 ## Overview
 
