@@ -22,9 +22,11 @@ All contributions should be made through pull requests. During the PR review, we
 - Dependencies are managed in `platformio.ini` - use latest versions where possible
 
 ### Hardware Development  
-- PCB files are in EasyEDA format
+- PCB files are in EasyEDA Pro format
+- Include the updated EasyEDA project files with your PR
+- Clearly document what was changed (e.g., "Added 100nF capacitor to pin 3, rerouted power trace")
 - Verify your changes work with the components I'm using
-- Document any modifications clearly
+- Hardware contributions must be EasyEDA Pro compatible
 
 ### Python Code
 - Add clear comments - if unsure/lazy, use AI to help document your code
@@ -70,4 +72,4 @@ By submitting a PR, you agree to license your contributions under these terms.
 
 ---
 
-*Note: These contribution guidelines are still evolving. When in doubt, just submit the PR and we'll figure it out together!*
+*Note: These contribution guidelines are still evolving. When in doubt, just submit the PR and we'll figure it out.*

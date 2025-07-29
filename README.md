@@ -3,7 +3,7 @@
 *(for anyone who would think i removed markings - no :3, that's just the angle, laziness, low light and iphone 12 :3)*
 ## 🧠 Project Overview
 
-A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi (maximum supported ADC sample rate for 16 channels is 4000 Hz) - just power on, connect, and start recording.
+A complete open-source 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 chips. This wireless brain-computer interface captures EEG, ECG, EMG, and other biosignals. Designed for BCI enthusiasts and researchers who want an easy-to-use board that streams real-time data over WiFi (maximum supported ADC sample rate for 16 channels is 4000 Hz) - just power on, connect, and start recording. Manufacturing-ready PCB files included.
 
 **Note**: The board is currently preconfigured for VRChat BCI use. If you have questions (oh silly woofer, why are you here, what are you doing, run :3), just ask - I'll help set up everything. It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later... maybe, who knows, not me for sure :3
 
@@ -13,6 +13,17 @@ A 16-channel biosignal acquisition board built with ESP32-C3 and dual ADS1299 ch
 
 ### Performance & Noise Considerations
 Even from a pure performance standpoint, battery operation is important - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. The cable itself can act as an antenna picking up 50/60 Hz noise if it's long enough. Always disconnect USB after configuration for quality recordings.
+
+## 📁 Repository Structure
+
+This repository contains everything you need to build and use the Meower BCI board:
+
+- **`firmware/`** - ESP32-C3 firmware source code (PlatformIO)
+- **`hardware/`** - Complete PCB design files, schematics, and manufacturing files ([see hardware README](hardware/README.md))
+- **`python/`** - Example code and tools for data acquisition and visualization
+- **`images/`** - Documentation images and board photos
+- **Licenses** - Dual-licensed firmware/software (MIT/Apache 2.0) and CERN-OHL-S-2.0 for hardware
+- **Documentation** - This README, contributing guidelines, and trademark information
 
 ## 📚 What's in This Guide
 
