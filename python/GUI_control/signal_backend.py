@@ -157,7 +157,7 @@ class _Reader(mp.Process):
         last_stat_time = time.perf_counter()
         packets_processed = 0
         frames_processed = 0
-        enable_stats = True  # Set False to disable performance printing
+        enable_stats = False  # Set False to disable performance printing
         
         # Main processing loop
         while True:
