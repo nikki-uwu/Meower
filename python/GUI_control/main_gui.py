@@ -26,6 +26,13 @@ DEBUG = 0
 
 import sys
 
+# ─────────────────────────── PYTHON VERSION CHECK ─────────────────────
+if sys.version_info < (3, 11, 5):
+    print(f"ERROR: Python 3.11.5 or higher required (you have {sys.version})")
+    print("Please upgrade Python from https://python.org")
+    sys.exit(1)
+# ──────────────────────────────────────────────────────────────────────
+
 # ─────────────────────────── DEPENDENCY CHECK ─────────────────────────
 try:
     import numpy
@@ -1308,6 +1315,10 @@ class App(tk.Tk):
 
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # Windows .exe support for multiprocessing
+    import multiprocessing
+    multiprocessing.freeze_support()
+    
     try:
         App().mainloop()
     except KeyboardInterrupt:
