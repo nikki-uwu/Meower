@@ -132,10 +132,12 @@ function validateForm(){
 void handleSave()
 {
     // Get form values
-    String ssid = server.arg("ssid");
-    String pass = server.arg("pass");
-    String portCtrlStr = server.arg("port_ctrl");
-    String portDataStr = server.arg("port_data");
+    // Trim everything that must not carry stray blanks.
+    // Keep the passphrase verbatim.
+    String ssid        = server.arg("ssid");       ssid.trim();
+    String pass        = server.arg("pass");       // don’t trim
+    String portCtrlStr = server.arg("port_ctrl");  portCtrlStr.trim();
+    String portDataStr = server.arg("port_data");  portDataStr.trim();
     
     // Validate SSID
     if (ssid.isEmpty()) {
