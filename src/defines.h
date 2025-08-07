@@ -61,6 +61,11 @@
 #define WIFI_KEEPALIVE_WORD "WOOF_WOOF"
 #define WIFI_KEEPALIVE_WORD_LEN 9
 
+// Default TX power settings to prevent over-saturation
+#define AP_MODE_TX_POWER          WIFI_POWER_11dBm   // 11 dBm for Access Point mode
+#define NORMAL_MODE_TX_POWER      WIFI_POWER_11dBm   // 11 dBm initial for Station mode
+#define NORMAL_MODE_TX_POWER_HIGH WIFI_POWER_19_5dBm // 19.5 dBm after successful connection (optional)
+
 // I don't want main loop to run too often, so i set default period of 50 ms
 #define MAIN_LOOP_PERIOD_MS 50
 
