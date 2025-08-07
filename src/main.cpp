@@ -528,8 +528,9 @@ void setup()
                     FALLING ); // trigger on falling edge
 
     // Right at the end we have to reset ADC so it's at default state.
-    wait_until_ads1299_is_ready();
     ads1299_full_reset(); // Signal will be square wave with 1s period
+
+    // IF we use it for BCI - do preset
     if (BCI_MODE) { BCI_preset(); } // Set normal BCI mode
 
     Debug.log("[BOOT] ssid      : %s", ssid.c_str());
