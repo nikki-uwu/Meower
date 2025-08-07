@@ -9,6 +9,14 @@ Revision - Evangelion/NERV Style
 • **Buttons**: Black with amber borders, red glow on hover, orange on press
 • **Sliders**: Minimalist with amber track and handle
 • **Overall**: Technical/military interface inspired by Evangelion
+
+FIXED: Universal Python/Tkinter compatibility
+- Entry widgets: Smart type-aware synchronization
+  * StringVar entries: Fixed to prevent doubles in Python 3.11
+  * DoubleVar/IntVar entries: Left untouched to prevent TclError
+- Initialization order: Fixed sig_cfg not existing during GUI setup  
+- Slider initialization: Uses hardcoded defaults instead of StringVar values
+- No more "can't assign non-numeric value to scale variable" errors
 """
 
 # ─────────────────────────── DEBUG SWITCH ─────────────────────────
@@ -17,6 +25,19 @@ DEBUG = 0
 # ──────────────────────────────────────────────────────────────────
 
 import sys
+
+# ─────────────────────────── DEPENDENCY CHECK ─────────────────────────
+try:
+    import numpy
+    import scipy
+    import matplotlib
+except ImportError as e:
+    print(f"ERROR: Missing required dependency - {e}")
+    print("Please run: python install_dependencies.py")
+    print("Or manually install: pip install numpy scipy matplotlib")
+    sys.exit(1)
+# ──────────────────────────────────────────────────────────────────────
+
 import queue
 import threading
 import time
@@ -117,7 +138,7 @@ class App(tk.Tk):
                                    font=self.mono_font)
 
         # timers
-        self.after(16, self._animate_plots)   # ~60 fps demo wave
+        self.after(16, self._animate_plots)   # 60 fps animation
         self.after(50, self._poll_queues)
         
     def setup_fonts(self):
@@ -242,15 +263,13 @@ class App(tk.Tk):
         r = 0
         # Fs & Record
         self._create_label(ctrl, "SAMPLE RATE", r, 0)
-        self.fs_var  = tk.StringVar(value="250")
+        self.fs_var = tk.StringVar(value="250")
         self.fs_entry = self._create_entry(ctrl, self.fs_var, r, 1, width=8)
-        self.fs_entry.insert(0, self.fs_var.get())
         self._create_label(ctrl, "HZ", r, 2, sticky="w")
     
         self._create_label(ctrl, "BUFFER", r, 3)
         self.dur_var = tk.StringVar(value="4")
         self.dur_entry = self._create_entry(ctrl, self.dur_var, r, 4, width=6)
-        self.dur_entry.insert(0, "4")
         self._create_label(ctrl, "SEC", r, 5, sticky="w")
         
         ttk.Button(ctrl, text="APPLY", command=self._apply_buf_settings).grid(row=r, column=6, padx=4)
@@ -281,7 +300,11 @@ class App(tk.Tk):
         # NFFT
         self._create_label(ctrl, "FFT POINTS", r, 0)
         self.nfft_var = tk.IntVar(value=512)
-        initial_max = int(float(self.fs_var.get())) * int(float(self.dur_var.get()))
+        # Use default values directly instead of trying to get from StringVars
+        # which might not be fully initialized yet
+        initial_fs = 250  # Default sample rate
+        initial_dur = 4   # Default duration
+        initial_max = initial_fs * initial_dur
         self.nfft_sld = self._create_nerv_scale(
             ctrl, from_=32, to=initial_max, variable=self.nfft_var,
             orient="horizontal",
@@ -295,7 +318,9 @@ class App(tk.Tk):
             val = int(float(v))
             self.nfft_var.set(val)
             self.nfft_label.config(text=str(val))
-            self._sig_update(fft_pts=val)
+            # Only call _sig_update if sig_cfg exists
+            if hasattr(self, 'sig_cfg'):
+                self._sig_update(fft_pts=val)
         self.nfft_sld.config(command=update_nfft_label)
         self.nfft_sld.set(512)
         r += 1
@@ -413,7 +438,8 @@ class App(tk.Tk):
         # Spectrogram window size
         self._create_label(ctrl, "SPEC WIN", r, 2)
         self.spec_win_var = tk.IntVar(value=256)
-        initial_max_win = int(self.fs_var.get()) * int(self.dur_var.get()) // 2
+        # Use default values directly instead of trying to get from StringVars
+        initial_max_win = initial_fs * initial_dur // 2  # Using same defaults as NFFT
         self.spec_win_sld = self._create_nerv_scale(
             ctrl, from_=32, to=initial_max_win, variable=self.spec_win_var,
             orient="horizontal",
@@ -482,7 +508,8 @@ class App(tk.Tk):
         self.plots.set_specgram_limits(self.spec_lo.get(), self.spec_hi.get())
         self.plots.set_amplitude_limits(self.amp_var.get())
         self.amp_value_label.config(text="0.500 V")
-        self.plots.resize_buffer(int(self.fs_var.get()), int(self.dur_var.get()))
+        # Use the same default values we used for NFFT initialization
+        self.plots.resize_buffer(initial_fs, initial_dur)
 
     # Helper methods for NERV-style widgets
     def _create_label(self, parent, text, row, col, **kwargs):
@@ -492,9 +519,38 @@ class App(tk.Tk):
         return label
         
     def _create_entry(self, parent, textvariable, row, col, **kwargs):
-        """Create a NERV-style entry"""
+        """Create a NERV-style entry - version-agnostic approach"""
         entry = ttk.Entry(parent, textvariable=textvariable, **kwargs)
         entry.grid(row=row, column=col, sticky="we", padx=2)
+        
+        # VERSION-AGNOSTIC SOLUTION that handles different variable types:
+        # 1. Force any pending updates
+        entry.update_idletasks()
+        
+        # 2. Get the expected value, handling different variable types
+        try:
+            expected_value = textvariable.get()
+            # Don't manipulate if it's a numeric variable (DoubleVar/IntVar)
+            # connected to a scale - these sync properly on their own
+            if isinstance(textvariable, (tk.DoubleVar, tk.IntVar)):
+                # For numeric variables, don't manipulate the entry
+                # The variable binding handles it correctly
+                return entry
+        except:
+            # If get() fails, just return the entry as-is
+            return entry
+        
+        # 3. For StringVar only: check and fix if needed
+        if isinstance(textvariable, tk.StringVar):
+            current_value = entry.get()
+            expected_str = str(expected_value) if expected_value else ""
+            
+            # Only manipulate if values don't match
+            if current_value != expected_str:
+                entry.delete(0, tk.END)
+                if expected_str:
+                    entry.insert(0, expected_str)
+            
         return entry
         
     def _create_nerv_scale(self, parent, **kwargs):
@@ -551,10 +607,15 @@ class App(tk.Tk):
         if DEBUG:
             print(f"[MAIN_GUI] _sig_update called with: {kwargs}")
         
+        # Only proceed if sig_cfg exists (it might not during initialization)
+        if not hasattr(self, "sig_cfg"):
+            if DEBUG:
+                print(f"[MAIN_GUI] _sig_update: sig_cfg doesn't exist yet, skipping")
+            return
+        
         if hasattr(self, "sig") and self.sig:
             self.sig.update_cfg(**kwargs)
-        if hasattr(self, "sig_cfg"):
-            self.sig_cfg.__dict__.update(kwargs)
+        self.sig_cfg.__dict__.update(kwargs)
 
         # Handle NFFT clamping
         if 'fft_pts' in kwargs:
@@ -810,7 +871,17 @@ class App(tk.Tk):
         
     # ── refresh COM-port list ───────────────────────────────────────────
     def _refresh_ports(self):
-        plist = SerialManager.ports()          # fresh scan every call
+        try:
+            plist = SerialManager.ports()          # fresh scan every call
+        except Exception as e:                     # catch any PySerial/WMI error
+            plist = []
+            # Log error to console for debugging
+            if self.ser_console:
+                self.ser_console.configure(state="normal")
+                self.ser_console.insert("end", f"[PC] ⚠ Port scan error: {e}\n")
+                self.ser_console.configure(state="disabled")
+                self.ser_console.see("end")
+        
         self.port_cb["values"] = plist or ("",)
     
         # if current selection vanished → pick the first detected port
@@ -821,7 +892,7 @@ class App(tk.Tk):
             except tk.TclError:
                 pass                           # widget may be disabled
     
-        # ←————  schedule the next scan!
+        # ←————  schedule the next scan! (ALWAYS happens now, even on error)
         self.after(1000, self._refresh_ports)
 
     # ── IO blocks --------------------------------------------------------
@@ -861,7 +932,6 @@ class App(tk.Tk):
         self._create_label(parent, "BAUD", 1, 0, sticky="e")
         self.baud_var = tk.StringVar(value="115200")
         ent = self._create_entry(parent, self.baud_var, 1, 1)
-        ent.insert(0, self.baud_var.get())
 
         # ── row-2 : Connect / Disconnect button ───────────────
         self.ser_btn = ttk.Button(parent, text="CONNECT",
@@ -872,31 +942,30 @@ class App(tk.Tk):
         # ── row-3 : SSID ───────────────────────────────────────
         self._create_label(parent, "SSID", 3, 0, sticky="e")
         self.ssid_var = tk.StringVar(value="SlimeVR")
-        ent = self._create_entry(parent, self.ssid_var, 3, 1)
-        self.ssid_entry = ent
-        ent.insert(0, self.ssid_var.get())
+        self.ssid_entry = self._create_entry(parent, self.ssid_var, 3, 1)
 
         # ── row-4 : Password ──────────────────────────────────
         self._create_label(parent, "PASSWORD", 4, 0, sticky="e")
         self.pass_var = tk.StringVar(value="")
-        ent = ttk.Entry(parent, textvariable=self.pass_var, show="*")
-        ent.grid(row=4, column=1, sticky="we", padx=2)
-        self.pass_entry = ent
-        ent.insert(0, self.pass_var.get())
+        self.pass_entry = ttk.Entry(parent, textvariable=self.pass_var, show="*")
+        self.pass_entry.grid(row=4, column=1, sticky="we", padx=2)
+        # Password Entry doesn't use _create_entry, so handle it separately
+        # Force update and check if empty (for Python 3.12 compatibility)
+        self.pass_entry.update_idletasks()
+        if not self.pass_entry.get() and self.pass_var.get():
+            self.pass_entry.insert(0, self.pass_var.get())
 
-        # ── row-6 : Data port ─────────────────────────────────
+        # ── row-5 : Data port ─────────────────────────────────
         self._create_label(parent, "DATA PORT", 5, 0, sticky="e")
         self.data_port_var = tk.StringVar(value="5001")
         ent = self._create_entry(parent, self.data_port_var, 5, 1, width=8)
-        ent.insert(0, self.data_port_var.get())
 
-        # ── row-7 : Control port ──────────────────────────────
+        # ── row-6 : Control port ──────────────────────────────
         self._create_label(parent, "CTRL PORT", 6, 0, sticky="e")
         self.ctrl_port_var = tk.StringVar(value="5000")
         ent = self._create_entry(parent, self.ctrl_port_var, 6, 1, width=8)
-        ent.insert(0, self.ctrl_port_var.get())
 
-        # ── row-8 : Send-config button ────────────────────────
+        # ── row-7 : Send-config button ────────────────────────
         ttk.Button(parent, text="SEND NET CONFIG",
                    command=self._send_net_config
                    ).grid(row=7, column=0, columnspan=2,
@@ -1170,9 +1239,10 @@ class App(tk.Tk):
     def _on_close(self):
         """
         Called by the window manager (the "X" button).
-        Sets stop flags, stops UDP thread if running, then destroys the GUI
-        after 300 ms so background threads/processes can exit cleanly.
+        Ensures all child processes and threads are terminated cleanly.
         """
+        print("[MAIN_GUI] Shutting down...")
+        
         # Cancel all pending after() callbacks first
         try:
             self.after_cancel(self._animate_plots)
@@ -1190,29 +1260,50 @@ class App(tk.Tk):
         # tell timers & workers to stop
         self.stop_evt.set()
     
-        # stop signal worker
+        # stop signal worker (IMPORTANT: This runs a subprocess)
         if self.sig:
             try:
+                print("[MAIN_GUI] Stopping signal worker process...")
                 self.sig.stop()
-            except Exception:
-                pass
+                # Give it a moment to terminate the subprocess
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"[MAIN_GUI] Error stopping signal worker: {e}")
                 
         # stop UDP manager (if it exists and is connected)
         if self.udp:
             try:
+                print("[MAIN_GUI] Stopping UDP thread...")
                 self.udp.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[MAIN_GUI] Error stopping UDP: {e}")
                 
         # stop serial manager
         if self.ser:
             try:
+                print("[MAIN_GUI] Stopping serial thread...")
                 self.ser.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[MAIN_GUI] Error stopping serial: {e}")
     
-        # destroy window immediately
+        # Force terminate any remaining child processes (failsafe)
+        try:
+            import multiprocessing
+            for child in multiprocessing.active_children():
+                print(f"[MAIN_GUI] Force terminating process: {child.name}")
+                child.terminate()
+                child.join(timeout=0.5)
+                if child.is_alive():
+                    child.kill()  # Force kill if terminate didn't work
+        except Exception as e:
+            print(f"[MAIN_GUI] Error during process cleanup: {e}")
+        
+        # destroy window
+        print("[MAIN_GUI] Closing window...")
         self.destroy()
+        
+        # Force exit to ensure everything stops
+        sys.exit(0)
 
 
 # ─────────────────────────────────────────────────────────────

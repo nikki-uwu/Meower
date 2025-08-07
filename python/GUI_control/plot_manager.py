@@ -1,6 +1,8 @@
 """plot_manager.py - Matplotlib Plot Management for DIY EEG GUI
 Encapsulates all matplotlib complexity to simplify main GUI
 Evangelion/NERV Style Edition
+
+FIXED: Removed flush_events() call that was causing window grab/drag issues
 """
 
 import numpy as np
@@ -733,7 +735,13 @@ class PlotManager:
         self._bg_cache = self.canvas.copy_from_bbox(self.fig.bbox)
         
     def draw_blit(self):
-        """Fast blit update using cached background."""
+        """Fast blit update using cached background.
+        
+        FIXED: Removed flush_events() call that was causing window grab issues.
+        The blit() is sufficient for updating the display, and returning to
+        Tkinter's event loop via after() scheduling handles event processing
+        properly without interfering with window manager operations.
+        """
         if self._bg_cache is None:
             # No background cached, do full draw
             self.draw_full()
@@ -760,7 +768,10 @@ class PlotManager:
                 
         # Single blit call for entire figure
         self.canvas.blit(self.fig.bbox)
-        self.canvas.flush_events()
+        # REMOVED: self.canvas.flush_events() - This was causing window grab issues!
+        # The animation loop already returns to Tkinter's event loop naturally
+        # via self.after() scheduling, so forcing event processing here is
+        # unnecessary and harmful to window manager operations.
         
     def bind_resize_callback(self, callback):
         """Bind a callback for window resize events."""

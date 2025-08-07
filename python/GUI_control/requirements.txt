@@ -1,0 +1,11 @@
+# Core dependencies for DIY EEG/BCI GUI
+# Minimum versions for Python 3.11.5+ compatibility
+numpy>=1.26.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+
+# Optional but recommended for serial communication
+pyserial>=3.5.0
+
+# Note: tkinter comes with Python by default, if you need it you have to run python installer, click modify and then activate tkinter
+# Linux users may need: sudo apt-get install python3-tk
