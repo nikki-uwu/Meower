@@ -90,24 +90,6 @@ static bool update_channel_register(int channel, uint8_t mask, uint8_t new_bits)
     return (verified_val == new_val);
 }
 
-// Helper to update all channel registers (CH1SET through CH8SET) on both ADCs
-// Uses modify_register_bits internally for each channel register
-static bool update_all_channels(uint8_t mask, uint8_t new_bits)
-{
-    bool all_success = true;
-    
-    // Loop through all channel registers (0x05=CH1SET to 0x0C=CH8SET)
-    for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
-    {
-        if (!modify_register_bits(reg, mask, new_bits))
-        {
-            all_success = false;
-        }
-    }
-    
-    return all_success;
-}
-
 // Register Read-Modify-Write Helper
 // Reads a register from both ADCs, modifies specific bits, writes back
 // Returns true if successful, false if verification failed
@@ -136,6 +118,26 @@ static bool modify_register_bits(uint8_t reg_addr, uint8_t mask, uint8_t new_bit
 
     return success;
 }
+
+// Helper to update all channel registers (CH1SET through CH8SET) on both ADCs
+// Uses modify_register_bits internally for each channel register
+static bool update_all_channels(uint8_t mask, uint8_t new_bits)
+{
+    bool all_success = true;
+    
+    // Loop through all channel registers (0x05=CH1SET to 0x0C=CH8SET)
+    for (uint8_t reg = 0x05; reg <= 0x0C; reg++)
+    {
+        if (!modify_register_bits(reg, mask, new_bits))
+        {
+            all_success = false;
+        }
+    }
+    
+    return all_success;
+}
+
+
 
 static void send_reply(const void* data, size_t len)
 {
