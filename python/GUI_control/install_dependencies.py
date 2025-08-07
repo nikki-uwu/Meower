@@ -85,10 +85,6 @@ def main():
         'numpy>=1.26.0',
         'scipy>=1.11.0', 
         'matplotlib>=3.7.0',
-    ]
-    
-    # Optional packages
-    optional = [
         'pyserial>=3.5.0',
     ]
     
@@ -117,21 +113,6 @@ def main():
             except:
                 print(f"✓ {pkg_name} is installed")
     
-    print("\nChecking optional packages:")
-    missing_optional = []
-    for req_spec in optional:
-        pkg_name, op, min_ver = parse_requirement(req_spec)
-        
-        if not check_package_version(pkg_name):
-            print(f"✗ {pkg_name} is not installed (optional - needed for serial ports)")
-            missing_optional.append(req_spec)
-        else:
-            try:
-                current = version(pkg_name)
-                print(f"✓ {pkg_name} {current} is installed")
-            except:
-                print(f"✓ {pkg_name} is installed")
-    
     # Install/upgrade missing or outdated required packages
     to_install = missing_required + outdated_required
     if to_install:
@@ -147,36 +128,12 @@ def main():
                 print("\nTry manually: pip install -r requirements.txt")
                 sys.exit(1)
     
-    # Ask about optional packages (only in interactive mode)
-    if missing_optional:
-        print("\n" + "="*60)
-        print("Optional packages for serial port support are missing")
-        
-        if is_interactive():
-            response = input("Install optional packages? (y/N): ").lower().strip()
-            install_optional = response == 'y'
-        else:
-            print("(Skipping optional packages in non-interactive mode)")
-            print("To install later: pip install pyserial")
-            install_optional = False
-            
-        if install_optional:
-            for package in missing_optional:
-                print(f"Installing {package}...")
-                try:
-                    install_package(package)
-                    print(f"✓ {package} installed successfully")
-                except Exception as e:
-                    print(f"✗ Failed to install {package}: {e}")
-                    print("  Serial port features will be unavailable")
-    
     print("\n" + "="*60)
     if not to_install:
         print("✓ All required dependencies are installed and up to date!")
     else:
         print("✓ Required dependencies have been installed!")
     print("\nYou can now run: python main_gui.py")
-    print("\nFor serial port support: pip install pyserial")
 
 if __name__ == "__main__":
     main()

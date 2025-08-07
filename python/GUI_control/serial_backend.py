@@ -6,7 +6,7 @@ This module handles all serial port communication with the EEG board:
 - Auto-reconnection on disconnect
 - Thread-safe command queuing
 - Synchronous command/response with send_and_wait()
-- Graceful degradation if PySerial not installed
+- PySerial is required
 """
 
 import threading
@@ -14,11 +14,8 @@ import queue
 import time
 from typing import Optional, List
 
-try:
-    import serial
-    import serial.tools.list_ports
-except ImportError:
-    serial = None  # Demo-mode fallback when PySerial not installed
+import serial
+import serial.tools.list_ports
 
 
 class SerialManager:
@@ -178,10 +175,8 @@ class SerialManager:
         Get list of available serial ports.
         
         Returns:
-            List of port names, or empty list if PySerial not available
+            List of port names
         """
-        if serial is None:
-            return []
         return [p.device for p in serial.tools.list_ports.comports()]
 
     def is_connected(self) -> bool:
