@@ -108,9 +108,11 @@ void NetManager::onWifiEvent(WiFiEvent_t event)
 // ---------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------
 // 1. Link callback on wifi events
-// 2. Connect to WiFi as a station.
-// 3. Open the existing WiFiUDP socket for TX.
-// 4. Start an AsyncUDP listener for RX.  This is event-driven, so the CPU
+// 2. Initialize WiFi at minimum TX power to prevent over-saturation
+// 3. Start connection and increase to operational TX power
+// 4. Remember ports & peer IP
+// 5. Open the existing WiFiUDP socket for TX
+// 6. Start an AsyncUDP listener for RX. This is event-driven, so the CPU
 //    sleeps until a packet arrives - there is no polling overhead.
 void NetManager::begin(const char* ssid,
                        const char* pass,
@@ -123,18 +125,27 @@ void NetManager::begin(const char* ssid,
     s_netMgr = this;           // expose this instance
     WiFi.onEvent(wifiEventCb); // register static handler
 
-    // 2. Connect to Wi-Fi
+    // 2. Initialize WiFi at minimum TX power to prevent over-saturation
     WiFi.mode(WIFI_MODE_STA); // station-only; turns off the soft-AP
+    WiFi.setTxPower(WIFI_POWER_2dBm);  // Start at absolute minimum
+    Debug.log("[WIFI] Initialized at 2 dBm TX power to prevent over-saturation");
+    
+    // 3. Start connection and increase to operational TX power
     WiFi.begin(ssid, pass);
+    
+    // Immediately increase power for actual communication
+    // WiFi hardware is now initialized safely, increase power for connection
+    WiFi.setTxPower(NORMAL_MODE_TX_POWER);  // Operational power for communication
+    Debug.log("[WIFI] TX power increased to 11 dBm for connection");
 
-    // 3. Remember ports & peer IP
+    // 4. Remember ports & peer IP
     _localPortCtrl  = localPortCtrl;
     _remotePortData = remotePortData;
 
-    // 4. Outbound socket
+    // 5. Outbound socket
     _udp.begin(0);
 
-    // 5. Inbound socket - zero-poll AsyncUDP
+    // 6. Inbound socket - zero-poll AsyncUDP
     _asyncRx.listen(localPortCtrl);
     _asyncRx.onPacket([this](AsyncUDPPacket& pkt) { handleRxPacket(pkt); });
 
