@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2025 Gleb Manokhin (nikki)
+# Project: Meower
+
 # size_report.py ──────────────────────────────────────────────────────────
 #
 # • Shows a concise RAM / IRAM / Flash overview with percentages.
