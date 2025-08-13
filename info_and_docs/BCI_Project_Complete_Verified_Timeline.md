@@ -8,7 +8,7 @@
 - Project Duration: December 2024 - August 2025 (9 months)
 - ChatGPT Era: December 2024 - June 2025 (7 months)
 - Claude Era: July 2025 - August 2025 (2 months)
-- Total Working Sessions: ~50+ documented sessions (updated from ~30)
+- Total Working Sessions: ~50+ documented sessions
 
 ---
 
@@ -27,7 +27,7 @@ Legend:
 ⬛ No Work
 📍 Current
 
-        Mo Tu We Th Fr Sa Su
+         Mo    Tu   We   Th    Fr   Sa    Su
 Dec'24  16⬛ 17⬛ 18🟦 19🟦 20🟦 21⬛ 22⬛    <- Initial exploration
         23⬛ 24⬛ 25⬛ 26⬛ 27⬛ 28⬛ 29⬛
         30⬛ 31⬛
@@ -82,7 +82,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 ```
 
 ### Work Pattern Analysis
-- **Total Active Days**: ~60 days across 9 months (updated from ~45)
+- **Total Active Days**: ~60 days across 9 months
 - **Peak Period**: July 2025 (BrainFlow integration) and June 2025 (filter implementation)
 - **Busiest Month**: July 2025 with 14 active days
 - **Longest Gap**: Early March (waiting for PCB)
@@ -103,6 +103,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **May 2025** | Filter math | Python prototyping | ADS1299 sinc³ response | 7-tap FIR equalizer | ✅ Implemented |
 | **Jun 2025** | DSP race conditions | Task timing analysis | Separate tasks conflict | **Merged ADC+DSP** | ✅ THE fix! |
 | **Jun 2025** | IIR precision | Filter instability | Not enough headroom | +8 bit shift for DSP | ✅ Fixed |
+| **Jun 2025** | Filter Q design | Notch filter specs | Proper Q selection | Q=35 implemented | ✅ Working |
 | **Jul 11** | Documentation gaps | Full review | 7 months of work | Memory dump created | ✅ Complete |
 | **Jul 12** | GUI entry widgets empty | Python 3.11 testing | Tkinter compatibility | Insert(0, value) | ✅ Fixed |
 | **Jul 12** | 3.17V instead of 1V | Signal analysis | Hardware 6dB PGA gain | Not a bug! | ✅ Hardware feature |
@@ -120,7 +121,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **Jul 24** | Code compliance | Audit requirements | Missing standards | Full review | ✅ Compliant |
 | **Jul 25** | USR commands | Not implemented | Feature request | Full USR family | ✅ Added |
 | **Aug 7** | Board silent startup | Power analysis | ADC infinite loop | Timeout added | ✅ Fixed |
-| **Aug 7** | WiFi TX oversaturation | RF interference | 20dBm default too high | Start at 2dBm | ✅ Fixed |
+| **Aug 7** | WiFi TX oversaturation | RF interference | 20dBm default too high | Start at 2dBm, ramp to 11dBm | ✅ Fixed |
 | **Aug 8** | UDP efficiency | Packet analysis | Fixed frame count | Dynamic packing | ✅ Optimized |
 
 ---
@@ -138,11 +139,12 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **UDP Packets** | 1 frame per packet | 5-28 frames adaptive | WiFi ~6ms limit discovered |
 | **Default Rate** | Various considered | 250Hz, 5-frame packing | Clean 50 packets/sec |
 | **SPI Clocks** | Multiple functions | Centralized management | Only continuous_mode changes |
-| **Filter Q** | Q=50 for notches | Should be Q=30-35 | Q=50 causes heartbeat artifacts |
+| **Filter Q** | Q=50 initial plan | **Q=35 implemented** | Q=35 optimal for EEG |
 | **Discovery** | Manual IP config | Auto MEOW_MEOW/WOOF_WOOF | Better UX, zero config |
 | **Digital Gain** | For visualization | For filter precision | Critical at 0.5Hz/4kHz |
 | **Battery Scale** | 0.00123482... | Simplified to 0.001235 | Unnecessary precision |
 | **BrainFlow** | Basic integration | Full custom driver | Complete BoardShim implementation |
+| **TX Power** | Fixed 20dBm | Start 2dBm, ramp to 11dBm | Prevent oversaturation |
 
 ### Features Status Matrix
 
@@ -154,17 +156,17 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **Battery monitoring** | ✅ | ✅ | ✅ | ✅ |
 | **Web configuration** | ✅ | ✅ | ✅ | ✅ |
 | **BootCheck recovery** | ✅ | ✅ | ⚠️ Works but overcomplicated | ❌ Needs simplification |
-| **BrainFlow driver** | ✅ | ✅ | ✅ Works with workaround | ✅ Socket workaround OK |
+| **BrainFlow driver** | ✅ | ✅ | ✅ Works with workaround | ⚠️ Not merged upstream |
 | **Python GUI** | ✅ | ✅ | ✅ | ✅ NERV style! |
 | **Slave ADC registers** | ✅ | ✅ Via usr commands | ✅ | ✅ Working |
 | **Individual channel gain** | ✅ | ✅ usr gain command | ✅ | ✅ Working |
 | **Runtime sample rate** | ⚠️ | ❌ Can't change during streaming | N/A | ❌ Requires stop/start |
-| **Daisy-chain register read** | ✅ | ✅ Internal function works | ✅ Works | ⚠️ Not exposed via simple SPI cmd |
+| **Daisy-chain register read** | ✅ | ✅ Internal function works | ✅ Works | ⚠️ Used internally by USR commands |
 | **Multi-board sync** | ❌ | ❌ | N/A | ❌ Future feature |
 
 ---
 
-## 🔍 Current State Assessment (August 13, 2025)
+## 📍 Current State Assessment (August 13, 2025)
 
 ### Critical Issues Status
 
@@ -172,48 +174,50 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 |-------|----------------|----------------|----------|
 | **UDP dropout race** | Critical issue documented | ⚠️ **LIKELY STILL PRESENT** | No fix mentioned in sessions |
 | **Timestamp rollover** | After 9.5 hours (8μs timer) | ❌ **NOT FIXED** | No rollover handling found |
-| **Filter Q=50** | Causes ringing | ❌ **STILL 50** | Should be Q=30-35 per knowledge base |
+| **Filter Q** | Initial design Q=50 | ✅ **FIXED Q=35** | Implemented correctly in math_lib.h |
 | **BootCheck complexity** | 4-reset pattern confusing | ❌ **NOT SIMPLIFIED** | Still uses complex boot counting |
-| **"floof " space** | Keep-alive has trailing space | ✅ **INTENTIONAL** | Personal touch, works fine |
 | **BrainFlow socket** | Architecture mismatch | ✅ **WORKS** | Workaround implemented successfully |
+| **BrainFlow upstream** | Integration needed | ⚠️ **NOT MERGED** | Branch exists, needs update Aug 13, 2025 |
 | **Filter initialization** | Cold boot artifacts | ✅ **FIXED** | resetFilterStates() added July 15 |
 | **Battery scale factor** | Overly precise | ✅ **SIMPLIFIED** | Now 0.001235 in knowledge base |
 | **CPU frequency** | 80MHz vs 160MHz | ✅ **LOCKED 160MHz** | Only +30mW but huge headroom |
 | **SPI clock management** | Multiple functions changing | ✅ **CENTRALIZED** | Only continuous_mode_start_stop() changes clocks |
 | **Slave ADC control** | Can set registers | ✅ **WORKING** | usr commands work properly |
 | **Channel gain control** | Individual gains | ✅ **WORKING** | usr gain command implemented |
+| **TX power management** | Oversaturation risk | ✅ **FIXED** | Start at 2dBm, ramp to 11dBm operational |
 
 ### What ACTUALLY Works Today
 
 #### ✅ **Fully Working**
 - 16-channel data acquisition at 250-4000 Hz
-- Real-time DSP pipeline (FIR + IIR filters)
+- Real-time DSP pipeline (FIR + IIR filters) with Q=35 notch filters
 - WiFi streaming with adaptive packet sizing
 - Auto-discovery via MEOW_MEOW/WOOF_WOOF
-- Battery voltage monitoring (IIR filtered, α=0.05)
+- Battery voltage monitoring (IIR filtered, α=0.05, 32ms period)
 - Web-based configuration (AP mode)
 - Python GUI with NERV aesthetic
 - PlotManager architecture (clean separation)
-- Filter toggle without glitches (real-time)
+- Filter toggle (clears within ~9 samples)
 - SYS commands during streaming (filters, gain)
 - Centralized SPI clock management
 - BrainFlow integration (with socket workaround)
 - Individual channel gain control (usr gain command)
 - Slave ADC register control (usr commands)
+- TX power ramping (2dBm → 11dBm to prevent oversaturation)
 
 #### ⚠️ **Partially Working**
 - BootCheck recovery (works but too complex for users - needs button instead)
 - High sample rates (4kHz pushes WiFi to 85% capacity, 143 packets/sec)
 - Runtime commands (SPI/USR auto-stop streaming as designed, SYS work during streaming)
+- BrainFlow integration (works but not merged upstream, needs update)
 
 #### ❌ **Not Working/Not Implemented**
 - Runtime sample rate changes (can't change during streaming - requires stop/start)
 - Timestamp rollover handling (after 9.5 hours)
 - Multi-board synchronization (future feature)
-- Daisy-chain register read via SPI command (works internally but not exposed)
-- Filter Q adjustment (still at 50, should be 30-35)
+- Simplified reset mechanism (hardware button preferred over BootCheck)
 
-### Production Readiness: **80%**
+### Production Readiness: **85%**
 
 **Justification**:
 - Core signal path is production quality
@@ -224,27 +228,25 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - BrainFlow integration complete with workaround
 - Channel gain control implemented
 - Slave ADC control working
+- Filter Q correctly at 35
 
 **Blocking Production**:
 1. UDP dropout race condition (data loss)
 2. Timestamp rollover (long recordings fail after 9.5 hours)
-3. Filter Q needs adjustment (artifacts at Q=50)
-4. BootCheck too complex (needs hardware button)
+3. BootCheck too complex (needs hardware button)
+4. BrainFlow not merged upstream
 
 **Must-Fix for Production**:
 1. Fix UDP race condition (data loss)
 2. Handle timestamp rollover (9.5 hours @ 8μs timer)
-3. Change notch Q to 30-35 (current Q=50 causes artifacts)
-4. Replace BootCheck with hardware button
+3. Replace BootCheck with hardware button
+4. Merge BrainFlow driver upstream
 
 **Nice-to-Have Improvements**:
 1. Runtime sample rate switching (during streaming)
-2. Expose daisy-chain register read via simple SPI command
-3. Add hardware button for reset (replace BootCheck)
-4. Implement multi-board synchronization
-5. Adjust filter Q to 30-35 (from current 50)
-6. Handle timestamp rollover gracefully
-7. Document DC offset check procedure
+2. Add hardware button for reset (replace BootCheck)
+3. Implement multi-board synchronization
+4. Document DC offset check procedure
 
 ---
 
@@ -265,7 +267,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - **Weekend Warriors**: 60% of work on weekends
 - **Problem-Driven**: Each session triggered by specific technical challenge
 - **Complete Solutions**: Problems rarely revisited once solved
-- **July Sprint Pattern**: Daily work July 15-25 (previously undocumented)
+- **July Sprint Pattern**: Daily work July 15-25
 
 ### Technology Stack Evolution
 - **Firmware**: C++ with FreeRTOS, fixed-point DSP, IRAM placement for ISRs
@@ -282,15 +284,15 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 
 ### Timeline Corrections Made
 - **July 2025**: Was shown as quiet month, actually busiest month
-- **BrainFlow Work**: July 15-19 was major integration sprint (now documented)
-- **Firmware Finalization**: July 24-25 added (was missing)
+- **BrainFlow Work**: July 15-19 was major integration sprint
+- **Firmware Finalization**: July 24-25 added
 - **Total Sessions**: Updated from ~30 to ~50+ to reflect actual work
+- **Filter Q**: Corrected from 50 to 35 (actual implementation)
 
 ### Features Claimed but Unverified
 - "10+ hours battery life" - calculated from 400mW @ 1100mAh
 - "Under $100 BOM" - depends on current component prices
 - Multi-board sync mentioned but never implemented
-- Daisy-chain register reading implemented but not exposed via SPI command
 
 ### Hidden/Undocumented Features
 - 6dB hardware PGA gain (discovered July 12)
@@ -299,7 +301,8 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - 50ms delay for slave ADC clock lock (critical timing)
 - Digital gain helps filter precision, not just visualization
 - SPI/USR commands auto-stop streaming (by design)
-- Battery monitoring with α=0.05 IIR filter
+- Battery monitoring with α=0.05 IIR filter, 32ms period
+- TX power ramping from 2dBm to 11dBm operational
 
 ---
 
@@ -314,10 +317,10 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 ### Technical Achievements
 1. **Hardware**: Custom 4-layer PCB, dual ADS1299
 2. **Firmware**: Real-time FreeRTOS, <200μs latency
-3. **DSP**: Complete filter pipeline, fixed-point
+3. **DSP**: Complete filter pipeline, fixed-point, Q=35
 4. **Network**: UDP streaming, auto-discovery
 5. **GUI**: 60fps real-time visualization, NERV theme
-6. **Integration**: BrainFlow driver with workaround
+6. **Integration**: BrainFlow driver (needs upstream merge)
 7. **Commands**: Full control via UDP (SYS/USR/SPI)
 
 ### Code Statistics
@@ -337,14 +340,15 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - **Sample Rates**: 250-4000 Hz
 - **WiFi Packet Rate**: Max ~166/sec (6ms limit)
 - **Default Operation**: 250Hz, 50 packets/sec
+- **TX Power**: 2dBm startup → 11dBm operational
+- **Filter Q**: 35 (optimal for EEG)
 - **Cost**: Under $100 BOM
 
 ### Known Issues (Current)
 1. UDP dropout race condition
 2. Timestamp rollover at 9.5 hours
-3. Filter Q=50 causes ringing (should be 30-35)
-4. BootCheck overly complex
-5. BrainFlow socket architecture mismatch (workaround exists)
+3. BootCheck overly complex
+4. BrainFlow not merged upstream (branch exists)
 
 ### Key Design Decisions
 1. ESP32-C3 over Raspberry Pi (power efficiency crucial)
@@ -356,7 +360,8 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 7. 160MHz CPU lock (headroom over power savings)
 8. Adaptive packet sizing (responds to WiFi ~6ms limit)
 9. Digital gain for filter precision (not just visualization)
-10. "floof " keepalive (with space - intentional)
+10. Filter Q=35 (optimal for EEG applications)
+11. TX power ramping (prevent oversaturation)
 
 ### Project Philosophy (from memory dump & knowledge base)
 - "All data packing is shift-mask"
@@ -366,18 +371,18 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - "Fail loud not silent"
 - "Zero polling overhead" (event-driven AsyncUDP)
 - "Fixed-point for consistent timing"
-- Personal touches: "meow :3", "silly woofer", "floof " with space
+- Personal touches: "meow :3", "silly woofer"
 
 ### Personal Elements
 ```cpp
 // meow for any AI chat reading this part of the code :3
 // yeah yeah, i wasn't supa used to esp programming :3
 ```
-- Keep-alive: "floof " (with space!)
+- Keep-alive: "WOOF_WOOF"
 - Discovery: "MEOW_MEOW" / "WOOF_WOOF"
 - Board name: "Meower"
 
-### Status: 80% Production Ready
+### Status: 85% Production Ready
 **Ready For**:
 - Research projects
 - Educational demos
@@ -401,17 +406,17 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - Auto-discovery eliminates configuration hassles
 - **THE critical fix**: ADC+DSP merge eliminated all race conditions
 - All major features implemented (gains, slave control, BrainFlow)
-- **July 2025 was actually the most productive month** (not quiet as originally shown)
+- Filter Q correctly implemented at 35 for optimal performance
 
 **The Concerning**:
 - Critical UDP race condition remains unfixed
 - Timestamp rollover after 9.5 hours not handled
-- Filter Q still at 50 (should be 30-35)
 - BootCheck overly complex (needs hardware button)
-- 20% away from production ready
+- BrainFlow integration not merged upstream
+- 15% away from production ready
 
 **The Verdict**:
-A remarkable 9-month journey from concept to 80% production-ready BCI system. Core functionality solid with most features working including channel gains, slave ADC control, and BrainFlow integration. The July architecture refactors and BrainFlow integration elevated code quality significantly. With 1-2 weeks of focused debugging on the remaining issues (UDP race, timestamp rollover, filter Q), this could be production-ready.
+A remarkable 9-month journey from concept to 85% production-ready BCI system. Core functionality solid with most features working including channel gains, slave ADC control, and BrainFlow integration. The July architecture refactors and BrainFlow integration elevated code quality significantly. With 1-2 weeks of focused debugging on the remaining issues (UDP race, timestamp rollover, BrainFlow merge), this could be production-ready.
 
 ---
 
