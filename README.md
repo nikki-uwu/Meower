@@ -7,6 +7,8 @@ A complete open-source 16-channel biosignal acquisition board built with ESP32-C
 
 **Note**: The board is currently preconfigured for VRChat BCI use. If you have questions (oh silly woofer, why are you here, what are you doing, run :3), just ask - I'll help set up everything. It won't take more than 30 minutes max and you'll get everything you need. Easy configuration switches coming later... maybe, who knows, not me for sure :3
 
+**BrainFlow Integration**: BrainFlow driver is integrated but not yet merged into official BrainFlow repository. A branch exists with full implementation. [MustUpdate: August 13, 2025]
+
 ## ⚠️ Safety Information
 
 **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only**
@@ -20,7 +22,8 @@ This repository contains everything you need to build and use the Meower BCI boa
 
 - **`firmware/`** - ESP32-C3 firmware source code (PlatformIO)
 - **`hardware/`** - Complete PCB design files, schematics, and manufacturing files ([see hardware README](hardware/README.md))
-- **`python/`** - Example code and tools for data acquisition and visualization
+- **`python/`** - Example code and tools for data acquisition and visualization (GUI with real-time plots)
+  - Run `python install_dependencies.py` or `pip install -r requirements.txt` to install required packages
 - **`images/`** - Documentation images and board photos
 - **Licenses** - Dual-licensed firmware/software (MIT/Apache 2.0) and CERN-OHL-S-2.0 for hardware
 - **Documentation** - This README, contributing guidelines, and trademark information
@@ -62,6 +65,8 @@ This repository contains everything you need to build and use the Meower BCI boa
 5. **Click "Save and Restart"**
 
 The board will automatically discover your PC through UDP broadcast messages - no IP configuration needed.
+
+**Note**: The board starts WiFi at low power (2 dBm) to prevent oversaturation, then increases to operational power (11.5 dBm) after configuration.
 
 #### Method 2: Serial Configuration
 1. **Connect via USB** and open serial terminal (115200 baud)
@@ -113,7 +118,7 @@ After configuration, the LED shows board status:
    - **Restart VS Code** after downloads complete
 9. **Connect board** via data-capable USB-C cable (not charge-only!)
 10. **Click arrow (→)** to build and upload
-    - Or click checkmark (✓) to build first, then arrow
+    - Or click checkmark (✔) to build first, then arrow
 
 ### 2.3 Troubleshooting Upload Issues
 - **Other USB devices can interfere**: Disconnect USB audio interfaces, cameras, USB hubs, etc.
@@ -319,6 +324,7 @@ Digital Gain Settings and Maximum Input Range:
 - Gain 4:  ±1.125V (saturates at ±1.125V)
 - Gain 8:  ±562.5mV (saturates at ±562.5mV)
 - Gain 16: ±281.25mV (saturates at ±281.25mV)
+- and so on.
 
 Example: With digital gain=8, a ±600mV signal will clip/overflow
 ```
@@ -464,7 +470,7 @@ All filter coefficients are pre-calculated by a Python script that:
 - Phantom 50/60 Hz oscillations after a spike
 - Slowly drifting baseline after movement
 
-**Quick fix**: Toggle the filter off and back on (`sys filters_off` → `sys filters_on`). This takes <1ms and completely resets the filter states, stopping any ringing immediately.
+**Quick fix**: Toggle the filter off and back on (`sys filters_off` → `sys filters_on`). This resets the filter states - the output clears within a few samples (filter depth ~9).
 
 ## 6. 🔬 Raw SPI Access
 
@@ -637,6 +643,7 @@ Response: 30 bytes where:
   - 8+ hours at 4000 Hz (~470mW)
 - **Battery Monitoring**: Voltage sampled every 32ms with IIR filtering (α=0.05) for stable readings
 - **WiFi Range**: 30m typical indoor
+- **WiFi TX Power**: Starts at 2 dBm (prevents oversaturation), operational at 11.5 dBm
 - **Gain Recommendations**:
   - EEG (10-100µV): Hardware gain 12-24x
   - ECG (0.5-4mV): Hardware gain 2-8x
