@@ -1,13 +1,11 @@
-# BCI Project - Complete Verified Timeline & State
-## Wi-Fur EEG-16 / VRChat BCI Board Project
+# Meower - Complete Verified Timeline & State
+## Meower: 16-Channel EEG Acquisition System
 
-*Comprehensive timeline with fully recovered data from ChatGPT and Claude conversations*
+*Comprehensive development timeline and current state documentation*
 
 **Project Context**:
 - Current Date: August 13, 2025
 - Project Duration: December 18, 2024 - August 13, 2025 (8 months)
-- ChatGPT Era: December 2024 - June 2025 (7 months)
-- Claude Era: July 2025 - August 2025 (2 months)
 - Total Working Hours: ~630 hours
 - Total Working Days: ~165 days
 
@@ -29,7 +27,7 @@ Legend:
 📍 Current
 
          Mo    Tu   We   Th    Fr   Sa    Su
-Dec'24  16⬛ 17⬛ 18🟦 19🟦 20🟦 21🟦 22🟦    <- Project START!
+Dec'24  16⬛ 17⬛ 18🟦 19🟦 20🟦 21🟦 22🟦    <- Meower START!
         23⬛ 24⬛ 25⬛ 26⬛ 27⬛ 28⬛ 29⬛    <- Holiday break
         30⬛ 31⬛
 
@@ -37,19 +35,19 @@ Jan'25  --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛ 05⬛
         06🟦 07🟦 08🟦 09🟦 10⬛ 11⬛ 12⬛    <- Platform research (10h)
         13🟦 14🟦 15🟦 16🟦 17⬛ 18⬛ 19⬛    <- ESP32-C3 decision (12h)
         20🟩 21🟩 22🟩 23⬛ 24⬛ 25🟩 26🟩    <- SPI protocol study (15h)
-        27🟩 28⬛ 29⬛ 30⬛ 31⬛               <- UDP architecture (8h)
+        27🟩 28⬛ 29⬛ 30⬛ 31⬛                <- UDP architecture (8h)
 
 Feb'25  --⬛ --⬛ --⬛ --⬛ --⬛ 01⬛ 02⬛
         03🟨 04🟨 05🟨 06🟨 07🟨 08🟨 09⬛    <- 4-layer PCB design (35h)
         10🟨 11🟨 12🟨 13🟨 14🟨 15🟨 16⬛    <- 0402 components (40h)
         17🟨 18🟨 19🟨 20🟨 21🟨 22⬛ 23⬛    <- Test points, pogo pins (30h)
-        24🟨 25🟨 26🟨 27⬛ 28⬛               <- BOM finalization (15h)
+        24🟨 25🟨 26🟨 27⬛ 28⬛                <- BOM finalization (15h)
 
 Mar'25  --⬛ --⬛ --⬛ --⬛ --⬛ 01⬛ 02⬛
-        03⬛ 04⬛ 05⬛ 06⬛ 07⬛ 08⬛ 09⬛    <- Waiting for PCB
-        10⬛ 11⬛ 12⬛ 13⬛ 14⬛ 15⬛ 16⬛    <- Waiting for PCB
-        17⬛ 18⬛ 19⬛ 20⬛ 21⬛ 22⬛ 23⬛    <- PCB arrives!
-        24🟩 25🟩 26🟩 27⬛ 28⬛ 29⬛ 30⬛    <- First hardware success! (25h)
+        03⬛ 04⬛ 05⬛ 06⬛ 07⬛ 08⬛ 09⬛    <- Waiting for Meower PCB
+        10⬛ 11⬛ 12⬛ 13⬛ 14⬛ 15⬛ 16⬛    <- Waiting for Meower PCB
+        17⬛ 18⬛ 19⬛ 20⬛ 21⬛ 22⬛ 23⬛    <- Meower PCB arrives!
+        24🟩 25🟩 26🟩 27⬛ 28⬛ 29⬛ 30⬛    <- First Meower hardware success! (25h)
         31⬛
 
 Apr'25  --⬛ 01⬛ 02⬛ 03⬛ 04⬛ 05⬛ 06⬛
@@ -62,7 +60,7 @@ May'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
         05⬛ 06⬛ 07⬛ 08⬛ 09⬛ 10⬛ 11⬛
         12🟧 13🟧 14🟧 15⬛ 16⬛ 17⬛ 18⬛    <- 7-tap FIR in Python (20h)
         19⬛ 20⬛ 21⬛ 22⬛ 23⬛ 24⬛ 25⬛
-        26🟧 27🟧 28🟧 29⬛ 30⬛ 31⬛         <- Cascaded biquad plan (25h)
+        26🟧 27🟧 28🟧 29⬛ 30⬛ 31⬛       <- Cascaded biquad plan (25h)
 
 Jun'25  --⬛ --⬛ --⬛ --⬛ --⬛ --⬛ 01⬛
         02🟧 03🟧 04🟧 05🟧 06🟧 07⬛ 08⬛    <- FIR in firmware <50μs (35h)
@@ -72,28 +70,28 @@ Jun'25  --⬛ --⬛ --⬛ --⬛ --⬛ --⬛ 01⬛
         30⬛
 
 Jul'25  --⬛ 01⬛ 02⬛ 03⬛ 04⬛ 05⬛ 06⬛
-        07⬛ 08⬛ 09⬛ 10⬛ 11📝 12🟪 13🟪    <- Claude era begins! (20h)
-        14🟪 15🟪 16🟪 17🟪 18🟪 19🟪 20⬛    <- BrainFlow integration sprint! (85h)
+        07⬛ 08⬛ 09⬛ 10⬛ 11📝 12🟪 13🟪    <- Documentation, GUI fixes (20h)
+        14🟪 15🟪 16🟪 17🟪 18🟪 19🟪 20⬛    <- Meower BrainFlow integration sprint! (85h)
         21⬛ 22🔧 23🔧 24🔧 25🔧 26⬛ 27⬛    <- Firmware finalization (45h)
         28⬛ 29⬛ 30⬛ 31⬛
 
 Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
         05⬛ 06🔧 07🔧 08🔧 09⬛ 10⬛ 11⬛    <- TX power fix, UDP optimize (30h)
-        12📝 13📝📍                             <- Timeline recovery (8h) TODAY!
+        12📝 13📝📍                            <- Timeline recovery (8h) TODAY!
 ```
 
 ### Work Pattern Analysis
-- **Total Hours**: ~630 hours over 8 months
+- **Total Hours**: ~630 hours over 8 months on Meower
 - **Active Days**: ~165 days 
 - **Average**: 2.65 hours/day overall, 3.8 hours/active day
 - **Peak Month**: June 2025 (140 hours) - Critical merge month
-- **Peak Week**: July 14-19, 2025 (85 hours) - BrainFlow sprint
-- **Longest Gap**: March 1-23 (waiting for PCB)
+- **Peak Week**: July 14-19, 2025 (85 hours) - Meower BrainFlow sprint
+- **Longest Gap**: March 1-23 (waiting for Meower PCB)
 - **Burst Pattern**: 2-6 day intensive sessions followed by recovery
 
 ---
 
-## 🔄 Complete Problem-Solution Map
+## 🔄 Complete Meower Problem-Solution Map
 
 | Date | Problem | Investigation | Root Cause | Solution | VERIFIED? |
 |------|---------|---------------|------------|----------|-----------|
@@ -122,7 +120,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **Jul 12, 2025** | 3.17V not 1V output | Signal analysis | Hardware 6dB PGA gain | Not a bug - feature! | ✅ Understood |
 | **Jul 13, 2025** | GUI monolithic | 1000+ lines in one file | Poor separation | PlotManager extracted | ✅ Clean! |
 | **Jul 14, 2025** | GUI dated look | Generic appearance | No visual identity | NERV/Evangelion theme | ✅ Unique! |
-| **Jul 15, 2025** | BrainFlow integration | Need custom driver | No VRChat board exists | 800-line implementation | ✅ Complete |
+| **Jul 15, 2025** | BrainFlow integration | Need custom driver | No VRChat board exists | 800-line Meower driver | ✅ Complete |
 | **Jul 15, 2025** | Filter startup artifacts | Random initial values | Uninitialized memory | resetFilterStates() | ✅ Fixed |
 | **Jul 16, 2025** | Debug messages verbose | Console spam | Too much output | Selective logging | ✅ Cleaned |
 | **Jul 17, 2025** | Timestamp format | BrainFlow requirements | Channel mapping | Proper implementation | ✅ Working |
@@ -138,7 +136,7 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 
 ---
 
-## 📊 Technical Evolution: Planned vs Actual
+## 📊 Meower Technical Evolution: Planned vs Actual
 
 ### Architecture Changes
 | Component | Original Plan | What Actually Happened | Why Changed |
@@ -152,8 +150,8 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 | **DSP Tasks** | Separate ADC/DSP | **MERGED INTO ONE** | Race condition elimination |
 | **Filter Q** | Q=50 initial | **Q=35 implemented** | Optimal for EEG band |
 | **TX Power** | Fixed 20dBm | **2dBm start, 11dBm run** | Prevent RF oversaturation |
-| **Discovery** | Manual IP | Auto MEOW_MEOW/WOOF | Zero configuration UX |
-| **BrainFlow** | Basic integration | Full BoardShim driver | Complete implementation |
+| **Discovery** | Manual IP | Meower auto MEOW_MEOW/WOOF | Zero configuration UX |
+| **BrainFlow** | Basic integration | Full BoardShim driver | Complete Meower support |
 
 ### Performance Metrics Achieved
 - **Processing Latency**: <200μs total (ADC+DSP)
@@ -167,9 +165,9 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 
 ---
 
-## 📍 Current State Assessment (August 13, 2025)
+## 📍 Current Meower State Assessment (August 13, 2025)
 
-### ✅ **Fully Working Features**
+### ✅ **Meower's Fully Working Features**
 - 16-channel data acquisition (250-4000 Hz)
 - Real-time DSP pipeline (FIR + IIR, Q=35)
 - WiFi streaming with adaptive packing
@@ -183,47 +181,47 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - TX power ramping (2→11dBm)
 - Filter toggle with fast settling
 
-### ⚠️ **Known Issues**
+### ⚠️ **Meower's Known Issues**
 | Issue | Severity | Impact | Fix Effort |
 |-------|----------|--------|------------|
 | UDP dropout race | HIGH | Data loss possible | 1-2 days |
 | Timestamp rollover (9.5h) | MEDIUM | Long recordings fail | 1 day |
 | BootCheck complexity | LOW | Poor UX | 2-3 days |
-| BrainFlow not upstream | LOW | Distribution harder | 1 day |
+| Meower BrainFlow not upstream | LOW | Distribution harder | 1 day |
 
 ### 📈 **Production Readiness: 85%**
 
-**Ready For**:
+**Meower is Ready For**:
 - Research projects
-- BCI development
+- BCI development  
 - Educational use
 - Hobbyist experiments
 
-**NOT Ready For**:
+**Meower is NOT Ready For**:
 - Medical diagnosis
 - 24/7 operation without fixes
 - Commercial deployment
 
 ---
 
-## 🎯 Development Insights
+## 🎯 Meower Development Insights
 
 ### Productivity Patterns
 - **Most Productive Month**: June 2025 (140 hours)
 - **Most Productive Week**: July 14-19, 2025 (85 hours in 6 days!)
 - **Breakthrough Moments**: 
-  - March 24: First hardware success
+  - March 24: First Meower hardware success
   - June 23-24: THE CRITICAL MERGE
-  - July 15: BrainFlow integration
-  - August 7: TX power fix
+  - July 15: Meower BrainFlow integration
+  - August 7: Meower TX power fix
 - **Work Style**: Burst sessions (2-6 days) with recovery gaps
 
 ### Technology Stack
-- **Firmware**: C++ with FreeRTOS, fixed-point DSP
-- **Python**: Tkinter + Matplotlib + NumPy
+- **Firmware**: C++ with FreeRTOS, fixed-point DSP (Meower firmware)
+- **Python**: Tkinter + Matplotlib + NumPy (Meower GUI)
 - **Protocols**: UDP with custom framing
 - **Architecture**: Event-driven, zero polling
-- **Integration**: BrainFlow BoardShim
+- **Integration**: BrainFlow BoardShim (VRChatBoard for Meower)
 
 ### Key Design Decisions That Paid Off
 1. **ESP32-C3 over Pi**: 5x lower power
@@ -236,16 +234,19 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 8. **Adaptive packing**: Maximizes throughput
 9. **TX ramping**: Prevents WiFi issues
 
-### Project Philosophy
+### Meower Philosophy
 - "Fail loud not silent"
 - "No magic fallback"
 - "Every sample counts"
 - "Zero polling overhead"
+- Board name: "Meower"
+- Keep-alive: "WOOF_WOOF" (ironically)
+- Discovery: "MEOW_MEOW"
 - Personal touches: "meow :3", "silly woofer"
 
 ---
 
-## 📊 PROJECT STATISTICS
+## 📊 MEOWER PROJECT STATISTICS
 
 ### Time Investment
 - **Total Duration**: 238 days (Dec 18, 2024 - Aug 13, 2025)
@@ -255,30 +256,30 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 - **Peak Day**: Estimated 14+ hours during June merge
 
 ### Code Metrics
-- **Firmware**: ~3,000 lines C++ 
+- **Firmware**: ~3,000 lines C++ (Meower firmware)
 - **Python GUI**: ~2,500 lines (with PlotManager)
-- **BrainFlow Driver**: ~800 lines
+- **BrainFlow Driver**: ~800 lines (VRChatBoard for Meower)
 - **Documentation**: ~3,000+ lines
 - **Total**: ~9,300 lines
 
 ### Technical Achievements
-- **Channels**: 16 (dual ADS1299)
+- **Channels**: 16 (dual ADS1299) on Meower board
 - **Resolution**: 24-bit (0.536μV LSB)
 - **Sample Rates**: 250/500/1000/2000/4000 Hz
 - **Latency**: <200μs processing
 - **Packet Rate**: Up to 143/sec @ 4kHz
 - **Filter Count**: 4 (FIR + 3 IIR)
-- **Commands**: 30+ control commands
+- **Commands**: 30+ Meower control commands
 
 ---
 
-## 🔮 Future Roadmap
+## 🔮 Meower Future Roadmap
 
 ### Week 1-2 (Must Fix)
 - [ ] Fix UDP dropout race condition
 - [ ] Handle timestamp rollover
-- [ ] Merge BrainFlow upstream
-- [ ] Update documentation
+- [ ] Merge Meower BrainFlow driver upstream
+- [ ] Update Meower documentation
 
 ### Month 1 (Should Have)
 - [ ] Simplify BootCheck mechanism
@@ -296,23 +297,23 @@ Aug'25  --⬛ --⬛ --⬛ 01⬛ 02⬛ 03⬛ 04⬛
 
 ## 🎉 Final Summary
 
-From first concept on December 18, 2024 to 85% production-ready system on August 13, 2025 - this 8-month journey represents ~630 hours of focused development. The project successfully delivers:
+**Meower** - from first concept on December 18, 2024 to 85% production-ready system on August 13, 2025 - this 8-month journey represents ~630 hours of focused development. Meower successfully delivers:
 
 - ✅ Professional-grade 16-channel EEG acquisition
 - ✅ Real-time DSP with <200μs latency
 - ✅ Robust WiFi streaming architecture
-- ✅ Complete BrainFlow integration
-- ✅ Unique NERV-themed interface
+- ✅ Complete Meower BrainFlow integration
+- ✅ Unique NERV-themed Meower interface
 - ✅ Under $100 BOM cost
 
-The June 23-24 task merge was THE critical breakthrough, eliminating all race conditions. The July BrainFlow sprint delivered professional integration. August optimizations (TX ramping, UDP packing) pushed it to near-production quality.
+The June 23-24 task merge was THE critical breakthrough for Meower, eliminating all race conditions. The July BrainFlow sprint delivered professional Meower integration. August optimizations (TX ramping, UDP packing) pushed Meower to near-production quality.
 
-With just 1-2 weeks of focused work on the remaining issues, this system will be fully production-ready for research and educational use.
+With just 1-2 weeks of focused work on the remaining issues, Meower will be fully production-ready for research and educational use.
 
 ---
 
 *"Happy hacking, silly woofer :3"*
 
-*Timeline verified and complete: August 13, 2025*  
-*Total project investment: ~630 hours over 238 days*  
-*Current state: 85% production ready*
+*Meower timeline verified and complete: August 13, 2025*  
+*Total Meower development: ~630 hours over 238 days*  
+*Meower current state: 85% production ready*
