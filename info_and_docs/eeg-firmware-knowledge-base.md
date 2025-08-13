@@ -41,6 +41,7 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 
 ### Electrical Design Notes
 - **Battery voltage divider**: Calibrated scale factor = 0.001235 (current implementation)
+- **Battery monitoring**: Sampled every 32ms with IIR filter (α=0.05) for stable readings
 - **Pull-down on MISO**: Prevents signal decay when last bit = 1
 - **CS timing**: Uses direct register writes (40ns edges) vs digitalWrite (1.2µs)
 - **Power**: ~400mW typical, 470mW max @ 4kHz
@@ -48,6 +49,11 @@ BAT_SENSE   : GPIO 4   (ADC1_CH4 - CRITICAL: Must be ADC1!)
 - **DC Offset Warning**: Check DC voltage between input pins before setting gain - small signals on DC offsets will saturate when amplified
 - **Data format**: Channel data in big-endian, timestamps and battery voltage in little-endian
 - **CPU locked to 160MHz**: At 80MHz there's not enough headroom for 4kHz processing despite only +30mW difference
+
+### TX Power Management
+- **Initial power**: Starts at 2dBm to prevent RF oversaturation during initialization
+- **Operational power**: Increases to 11dBm for normal operation after WiFi/AP setup
+- **Sequence**: Low power → Initialize → Configure → Increase to operational level
 
 ---
 
@@ -117,6 +123,7 @@ DISCONNECTED → (WiFi connect) → IDLE → (start_cnt) → STREAMING
 - Control port is configurable (default 5000)
 - Board ignores its own MEOW_MEOW echoes
 - Any valid packet refreshes watchdog (WOOF_WOOF, commands) except MEOW_MEOW echoes
+- Keep-alive is "WOOF_WOOF" (no trailing space or other variations)
 
 ### Timeout Hierarchy
 1. **10s streaming watchdog**: No data → drop STREAMING to IDLE
@@ -230,6 +237,10 @@ Input (54 bytes) → [ADC Parse] → [<<8 shift] → [Digital Gain] → [FIR Equ
 2. **Bit Shift Up (+8)**: Convert 24-bit to 32-bit with 8-bit headroom for DSP
 
 3. **Digital Gain**: Additional bit shifting (0-8 bits) for signal amplification
+   - Reduces maximum input range before saturation:
+     - Gain 1: ±4.5V (full ADC range)
+     - Gain 8: ±562.5mV
+     - Gain 16: ±281.25mV
 
 4. **FIR Equalizer (7-tap)**:
    - Purpose: Compensates ADS1299 sinc³ decimation rolloff
@@ -243,7 +254,7 @@ Input (54 bytes) → [ADC Parse] → [<<8 shift] → [Digital Gain] → [FIR Equ
    - Note: 0.5Hz cutoff @ 4kHz sampling can become unstable (resonator behavior)
 
 6. **Notch Filters (4th order, cascaded biquads)**:
-   - 50/60 Hz: Q≈35, -40dB rejection
+   - 50/60 Hz: Q≈35, -40dB rejection (NOT Q=50 as sometimes incorrectly stated)
    - 100/120 Hz: Same specs for harmonics
    - Coefficient sets: 10 each (5 rates × 2 regions)
 
@@ -257,11 +268,18 @@ Input (54 bytes) → [ADC Parse] → [<<8 shift] → [Digital Gain] → [FIR Equ
   - Without this, filters can break and add DC instead of removing it
 - **Rounding**: Away from zero to prevent DC bias
 - **Headroom**: All stages stay within ±31 bits
-- **Reset**: Toggle off→on clears IIR states in <1ms
+- **Reset**: Toggle off→on clears IIR states (takes ~9 samples for full clear due to filter depth)
+- **Coefficient generation**: Python script included as comments in math_lib.h
 
 ### Important IIR Filter Behavior
 **Problem**: Large spikes can cause ringing (phantom oscillations)
-**Solution**: `sys filters_off` → `sys filters_on` instantly resets states
+**Solution**: `sys filters_off` → `sys filters_on` resets states
+**Timing**: State reset is immediate, but takes ~9 samples for complete clear due to filter depth
+
+### Runtime Filter Control
+- **SYS commands work during streaming**: Filters toggle in real-time without stopping data
+- **Filter changes are immediate**: No need to stop/restart streaming
+- **Each filter has individual control**: Can enable/disable specific filters while others run
 
 ---
 
@@ -320,6 +338,8 @@ Reading registers from both ADCs simultaneously is implemented via `read_Registe
 - Sends 30-byte transaction
 - Master register value at byte 3
 - Slave register value at byte 30
+- **Used internally by usr commands** but not exposed as simple SPI command
+- **usr gain/ch_power_down/ch_input/ch_srb2 commands** all use this internally when targeting specific channels
 
 ### Daisy-Chain Register Read Protocol
 
@@ -386,6 +406,12 @@ usr ch_input <channel|ALL> <input_type>
 usr ch_srb2 <channel|ALL> <ON|OFF>
 ```
 
+**Channel-specific commands**:
+- Channel numbers: 0-15 (0-7 on Master, 8-15 on Slave)
+- ALL: Applies to all 16 channels
+- Commands automatically route to correct ADC based on channel number
+- Internal implementation uses `read_Register_Daisy()` for verification
+
 ### SPI Commands (Stop continuous mode before executing)
 ```
 spi M|S|B|T <len> <byte0> <byte1> ...
@@ -447,17 +473,48 @@ return (now >= then) ? (now - then) : 0;
 
 ### Battery_Sense Class
 - **IIR filter**: α=0.05 default (20x jitter reduction)
-- **Period**: Configurable, default 32ms
-- **Scaling**: Hardware-specific calibration factor (0.01235)
+- **Period**: 32ms sampling interval
+- **Scaling**: Hardware-specific calibration factor (0.001235)
 
 ### Blinker Class
 - **Zero-cost**: Only writes on state changes
 - **Patterns**: Burst mode (N flashes per period)
 - **Polarity**: Handles active-high or active-low
 
+### Serial CLI
+- **Purpose**: WiFi configuration and basic control
+- **Available commands**: set ssid/pass/port_ctrl/port_data, show, apply
+- **Works at runtime**: Can reconfigure while board is running
+- **Debug output**: Available with SERIAL_DEBUG=1 in defines.h
+
 ---
 
-## 10. Known Issues & Workarounds
+## 10. Python GUI & Integration
+
+### GUI Features
+- **Real-time visualization**: Time-domain, wavelet, spectrogram, PSD plots
+- **Channel controls**: Per-channel visibility toggles
+- **NERV/Evangelion theme**: Custom visual styling
+- **60fps updates**: Optimized matplotlib with blitting
+
+### Setup
+- **Dependencies**: Run `python install_dependencies.py` or use requirements.txt
+- **Required packages**: numpy, scipy, matplotlib, pyserial
+- **Python version**: 3.11+ recommended
+
+### BrainFlow Integration
+- **Status**: Implemented but not merged into official BrainFlow
+- **Branch**: Available in separate branch [MUSTUPDATE: August 13, 2025]
+- **Driver**: Custom BoardShim implementation for Meower board
+
+---
+
+## 11. Known Issues & Workarounds
+
+### Current Issues
+- **UDP dropout race condition**: May cause occasional data loss (unresolved)
+- **Timestamp rollover**: After 9.5 hours (8µs timer wraps at 2^32)
+- **BootCheck complexity**: Overly complex, hardware button would be simpler
 
 ### Quirks to Remember
 - **WiFi + ADC2** = instant crash (hardware limitation)
@@ -482,23 +539,23 @@ sys start_cnt
 # Stop recording  
 sys stop_cnt
 
-# Change sampling rate
+# Change sampling rate (stops streaming)
 usr set_sampling_freq 1000
 
-# Set channel gains
+# Set channel gains (stops streaming)
 usr gain 5 24       # Channel 5 to 24x gain
 usr gain ALL 4      # All channels to 4x gain
 
-# Channel power control
+# Channel power control (stops streaming)
 usr ch_power_down 5 OFF    # Power down channel 5
 usr ch_power_down ALL ON   # Power on all channels
 
-# Channel input selection
+# Channel input selection (stops streaming)
 usr ch_input 5 SHORTED     # Short channel 5 inputs
 usr ch_input ALL NORMAL    # All channels to normal input
 usr ch_input 0 TEST        # Channel 0 to test signal
 
-# SRB2 reference control
+# SRB2 reference control (stops streaming)
 usr ch_srb2 ALL ON         # Connect all to SRB2 (referenced mode)
 usr ch_srb2 5 OFF          # Disconnect channel 5 from SRB2
 
@@ -506,19 +563,21 @@ usr ch_srb2 5 OFF          # Disconnect channel 5 from SRB2
 usr ch_power_down 15 OFF   # Power down
 usr ch_input 15 SHORTED    # Short inputs
 
-# Reset everything
-sys adc_reset     # Just ADCs
-sys esp_reboot    # Full system
-
-# Configure filters
+# Real-time filter control (works during streaming!)
 sys filters_on
+sys filter_dc_on
+sys filter_5060_on
 sys networkfreq 60      # US mains
 sys dccutofffreq 0.5    # Slow drift removal
 sys digitalgain 8       # 8x amplification
 
+# Reset everything
+sys adc_reset     # Just ADCs (stops streaming)
+sys esp_reboot    # Full system
+
 # Debug
 spi M 3 0x20 0x00 0x00  # Read ADC ID
-spi M 3 0x25 0x00 0x00  # Read CH1SET register (check all settings)
+spi M 3 0x25 0x00 0x00  # Read CH1SET register
 
 # Complete unused channel setup example
 usr ch_power_down 14 OFF   # Power down channel 14
@@ -529,4 +588,3 @@ usr ch_input 15 SHORTED    # Short its inputs
 
 ---
 
-*Happy hacking, silly woofer :3*
