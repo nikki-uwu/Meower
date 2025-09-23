@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing! This document is still being developed (as of July 25, 2025), so rules may evolve.
+Thanks for your interest in contributing! This document is still being developed (as of September 23, 2025), so rules may evolve.
 
 **Original author**: Gleb Manokhin (nikki)
 
