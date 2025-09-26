@@ -9,6 +9,10 @@ A complete open-source 16-channel biosignal acquisition board built with ESP32-C
 
 **BrainFlow Integration**: BrainFlow driver is integrated but not yet merged into official BrainFlow repository. A branch exists with full implementation. [MustUpdate: August 13, 2025]
 
+## ⚠️ BEFORE YOU DECIDE TO ORDER THE PCB
+
+**PLEASE**, before you order the PCB, try to reach me or talk to people who know how to do that and how to cross-check if everything is correct. If you see this message, it means I haven’t deleted it and I still haven’t gotten enough feedback on orders and how well it went, and I beg you, please triple-check the order. I have 7 boards ordered for the most recent version (and ton of prototypes) in this repository; all of them work. But this is not enough for me to say confidently it will work for all of you. I’ve done the best I could, but we all know it means nothing against probability and large numbers. I hope everything is fine, but until I get more info I will keep this warning here.
+
 ## ⚠️ Safety Information
 
 **WARNING**: This device is for education and research only. Not a medical device. Do not use for diagnosis or treatment. **Use battery power only**
@@ -688,9 +692,9 @@ Response: 30 bytes where:
    - `usr ch_power_down 15 OFF` to power down
    - `usr ch_input 15 SHORTED` to short inputs
 10. **Reference setup**: Use SRB2 for common reference
-    - `usr ch_srb2 ALL ON` for referenced mode
-    - `usr ch_srb2 ALL OFF` for differential mode
-    - 
+   - `usr ch_srb2 ALL ON` for referenced mode
+   - `usr ch_srb2 ALL OFF` for differential mode
+
 ## Contributions
 
 Any contributions submitted for inclusion in this repository will be licensed as follows:
