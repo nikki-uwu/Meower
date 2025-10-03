@@ -2,10 +2,12 @@
 
 ![PCB Top View](../images/2025_07_29_pcb_top.png)
 ![PCB Bottom View](../images/2025_07_29_pcb_bottom.png)
+![Active Electrode Top View](../images/2025_10_03_active_electrode_prototype.png)
+![Active Electrode Top View](../images/2025_10_03_testing_board_v1.png)
 
 ## Overview
 
-This directory contains the complete hardware design files for the Meower ESP32-C3 16-Channel WiFi EEG/BCI Board, created in EasyEDA Pro. 
+This directory contains the complete hardware design files for the Meower ESP32-C3 16-Channel WiFi EEG/BCI Board and Active Electrode created in EasyEDA Pro. 
 
 ## What's Included
 
@@ -19,10 +21,15 @@ The files in this directory are from the latest version that was ordered from ma
 
 ## Manufacturing Notes
 
+**Meower**
 - **PCB Specifications**: 4-layer PCB, 1mm thickness, standard FR4 material
 - **Ordering**: For easiest ordering, use JLCPCB - the component sizes and specifications are optimized for their assembly service
 - **Assembly**: Strongly recommend ordering assembled boards from JLCPCB rather than hand assembly
 - **Testing**: A testing board with pogo pins is included (as of 2025-07-29). This is the first version and while it allows you to see signals when properly set up, it's not optimal. Alternatively, you can flip the board to access the test points on the bottom.
+
+**Active electrode**
+
+Mostly the same, except we have only 2 layers.
 
 ## Contributing
 
