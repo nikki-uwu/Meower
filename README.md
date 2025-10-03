@@ -25,7 +25,7 @@ Even from a pure performance standpoint, battery operation is important - not ju
 This repository contains everything you need to build and use the Meower BCI board:
 
 - **`firmware/`** - ESP32-C3 firmware source code (PlatformIO)
-- **`hardware/`** - Complete PCB design files, schematics, and manufacturing files ([see hardware README](hardware/README.md))
+- **`hardware/`** - Complete Meower Board and Actvie Electrode design files, schematics, and manufacturing files ([see hardware README](hardware/README.md))
 - **`python/`** - Example code and tools for data acquisition and visualization (GUI with real-time plots)
   - Run `python install_dependencies.py` or `pip install -r requirements.txt` to install required packages
 - **`images/`** - Documentation images and board photos
