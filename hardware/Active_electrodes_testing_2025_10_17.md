@@ -48,14 +48,9 @@ I finally got the boards. It took longer than expected because I had to fix a fe
 
 **Bottom line:** the electrodes work. The schematic looks correct unless someone proves otherwise. Conductive rubber is a good option for normal BCI use since there’s no exposed metal on skin and it’s more comfortable.
 
-## Cost and mini-BOM snapshot
+## Cost
 
-- **My test unit cost:** about **€80** per module in parts  
-- **All-in for test batch:** roughly **€100** each after shipping and taxes  
-- **Op-amp:** solid but not the cheapest part, chosen for performance headroom  
-- **Other key parts:** electrode PCB, bias return connection, TVS at the input, series protection resistor, optional conductive rubber interface
-
-> If you want a formal BOM table with exact part numbers and prices, say the word and I’ll add it.
+roughly **€100** for 5 units after shipping and taxes. It's crazy expensive but will be much much lower when you order V1.1 without test point and just with more unit in general, since preparation is the main cost drive here.
 
 ## Safety note
 
