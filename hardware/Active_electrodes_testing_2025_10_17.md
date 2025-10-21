@@ -2,9 +2,9 @@
 
 ![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/001.jpg)
 ![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/002.jpg)
-![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/003.jpg)
-![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/004.jpg)
-![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/005.jpg)
+![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/003.png)
+![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/004.png)
+![Active Electrode Top View](../images/Active_electrodes_testing_2025_10_17/005.png)
 
 hi hi again :3
 
