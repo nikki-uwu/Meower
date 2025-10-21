@@ -4,6 +4,7 @@
 ![PCB Bottom View](../images/2025_07_29_pcb_bottom.png)
 ![Active Electrode Top View](../images/2025_10_03_active_electrode_prototype.png)
 ![Active Electrode Top View](../images/2025_10_03_testing_board_v1.png)
+![Active Electrode Top View](../images/2025_10_21_active_elect_V1_1_final.png)
 
 ## Overview
 
