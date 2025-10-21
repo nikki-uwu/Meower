@@ -52,10 +52,6 @@ I finally got the boards. It took longer than expected because I had to fix a fe
 
 roughly **€100** for 5 units after shipping and taxes. It's crazy expensive but will be much much lower when you order V1.1 without test point and just with more unit in general, since preparation is the main cost drive here.
 
-## Safety note
-
-These tests place an **active** measurement electrode near the heart. I soldered carefully, used conductive rubber, and kept a series resistor on the input side for extra safety. Medical safety standards keep patient leakage currents extremely low, which is a good reminder to treat live prototypes with respect. Everything was fine in my tests, but please be cautious if you reproduce this.
-
 ## Thanks
 
 Thanks to everyone who pointed out problems earlier. I somehow made 10 mistakes in 10 components, but I learned a lot :3
