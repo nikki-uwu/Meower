@@ -20,6 +20,20 @@ A complete open-source 16-channel biosignal acquisition board built with ESP32-C
 ### Performance & Noise Considerations
 Even from a pure performance standpoint, battery operation is important - not just for safety. Any USB connection introduces significant noise into the measurements. USB ground loops, switching power supplies, and computer interference can severely degrade signal quality. The cable itself can act as an antenna picking up 50/60 Hz noise if it's long enough. Always disconnect USB after configuration for quality recordings.
 
+## ⚠️ CHECK ADDITIONAL FILES AND HARDWARE FOLDER!
+
+I've realized I've buried active electrodes, tests, and hardware files inside the hardware folder, and I have no idea how many people will see them. So, maybe it's too late to add it now, but I have no will to fully rebuild the git, so I will do the laziest thing — I will copy screenshots to the README and put them here to get your attention :3
+
+If you are lazy and don't want to read, it's totally fine :3 — just copy them to any AI chat you want and ask whatever question you're curious about so it can scan it for you super fast and tell you if there's an answer or not.
+
+| Document | Description |
+|----------|-------------|
+| [Meower Hardware Design Files](hardware/README.md) | Main hardware info |
+| [Active Electrodes Testing](hardware/Active_electrodes_testing_2025_10_17.md) | Testing of active electrodes I made - you can find them useful, I'm extremely proud of how good they are and how close they are to the theoretical prediction with the band and phase and so on, happy noises :3 |
+| [Knowledge Base](info_and_docs/eeg-firmware-knowledge-base.md) | Additional info on code implementation with why and how |
+
+![Hardware screenshots](images/fast_hardware_screens.png)
+
 ## 📁 Repository Structure
 
 This repository contains everything you need to build and use the Meower BCI board:
