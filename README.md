@@ -12,6 +12,7 @@ A complete open-source 16-channel biosignal acquisition board built with ESP32-C
 ## ⚠️ BEFORE YOU DECIDE TO ORDER THE PCB
 
 **PLEASE**, before you order the PCB, try to reach me or talk to people who know how to do that and how to cross-check if everything is correct. If you see this message, it means I haven’t deleted it and I still haven’t gotten enough feedback on orders and how well it went, and I beg you, please triple-check the order. I have 7 boards ordered for the most recent version (and ton of prototypes) in this repository; all of them work. But this is not enough for me to say confidently it will work for all of you. I’ve done the best I could, but we all know it means nothing against probability and large numbers. I hope everything is fine, but until I get more info I will keep this warning here.
+**RB7 si not needed, press do not place**, i decided i will not touch files to make sure there are no changes on anything else. so just to make sure i will leave a comment here.
 
 ## ⚠️ Safety Information
 
